@@ -11,9 +11,9 @@ import time
 import traceback
 from collections import deque
 
-from . import db, sms
-from .odu import Odu, OduError, parse_carriers, signal_grade
-from .router import Router, RouterError
+from . import db, hardware, sms
+from .errors import DeviceError
+from .odu import signal_grade
 
 
 class Collector:
@@ -24,13 +24,9 @@ class Collector:
         self.retention_days = config["collector"]["retention_days"]
         self.alerts = config["alerts"]
 
-        odu_cfg = config["odu"]
-        self.odu = Odu(
-            odu_cfg["host"], odu_cfg["username"], odu_cfg["password"],
-            scheme=db.get_setting("odu_login_scheme"),
-            on_scheme=lambda name: db.set_setting("odu_login_scheme", name))
-        router_cfg = config["router"]
-        self.router = Router(router_cfg["host"], router_cfg["password"])
+        # Which pair of clients these are depends on the hardware; everything
+        # below this line asks them the same questions either way.
+        self.odu, self.router, self.device_kind = hardware.build(config)
 
         # Both devices answer in tens of milliseconds, so the speed readouts get
         # their own once-a-second loop while the heavier radio/SMS/history work
@@ -118,7 +114,7 @@ class Collector:
                 "session_up": _int(session.get("real_tx_bytes")),
             })
             self._set_error("odu", None)
-        except (OduError, OSError) as exc:
+        except (DeviceError, OSError) as exc:
             self._set_error("odu", str(exc))
 
         self._fast_ticks += 1
@@ -139,7 +135,7 @@ class Collector:
         try:
             devices = self.router.devices()
             self._set_error("router", None)
-        except (RouterError, OSError, ValueError) as exc:
+        except (DeviceError, OSError, ValueError) as exc:
             self._set_error("router", str(exc))
             return
 
@@ -203,7 +199,7 @@ class Collector:
         try:
             odu_snapshot = self._poll_odu(now)
             self._set_error("odu", None)
-        except (OduError, OSError) as exc:
+        except (DeviceError, OSError) as exc:
             self._set_error("odu", str(exc))
             self._handle_connectivity(now, connected=False)
 
@@ -217,7 +213,7 @@ class Collector:
 
     def _poll_odu(self, now):
         netinfo = self.odu.netinfo()
-        carriers = parse_carriers(netinfo)
+        carriers = self.odu.carriers(netinfo)
         primary = carriers[0] if carriers else {}
 
         session = self.odu.usage("session")
@@ -227,7 +223,7 @@ class Collector:
         wan = {}
         try:
             wan = self.odu.wan_status()
-        except OduError:
+        except DeviceError:
             pass
 
         connected = str(wan.get("current_wan_status", "")).startswith("ipv4_connected")
@@ -275,7 +271,7 @@ class Collector:
                                   "counters_cleared": self.odu.counters_cleared_on(),
                                   "qos": self.odu.qos_settings()}
                 self._settings_at = now
-            except OduError:
+            except DeviceError:
                 pass
 
         if now - self._sms_at > 120:
@@ -299,7 +295,7 @@ class Collector:
         """Read the inbox, and mine it for Airtel's daily usage figures."""
         try:
             raw = self.odu.sms_list()
-        except (OduError, OSError):
+        except (DeviceError, OSError):
             return
         self._sms_at = now
 
@@ -335,7 +331,7 @@ class Collector:
         for message in stale:
             try:
                 self.odu.sms_delete(message["id"])
-            except (OduError, OSError):
+            except (DeviceError, OSError):
                 pass
         db.log_event("sms_prune", "Freed %d usage text%s already saved to history"
                      % (len(stale), "" if len(stale) == 1 else "s"))

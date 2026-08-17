@@ -45,7 +45,9 @@ airtel-odu-app
 ```
 
 Then open <http://localhost:8080> and log in with the same admin password you'd
-use on the ODU/router's own web page — that's it, no files to edit.
+use on the device's own web page — that's it, no files to edit. (On the two-box
+ZTE setup you're asked for the outdoor unit's and the router's passwords; on a
+single-box ZLT unit, just the one.)
 
 To reach the dashboard from your phone, use your PC's LAN address instead of
 `localhost` (shown in the terminal when it starts), or scan the QR code in
@@ -62,21 +64,42 @@ airtel-odu-app
 
 ## Built for
 
-An Airtel fixed-wireless setup with a ZTE outdoor unit (ODU) and a ZTE MF296A
-indoor router, talking to each other at their fixed LAN addresses —
-`192.168.254.1` for the ODU, `192.168.18.1` for the router. That pairing is
-what this app was built and tested against; other ZTE-based Airtel ODU/router
-combos will likely work too since they share the same underlying firmware.
+Two families of Airtel fixed-wireless hardware, both tested against the real
+thing. Which one you have is worked out on startup — you don't have to say.
+
+**ZTE** — a ZTE outdoor unit at `192.168.254.1` plus a ZTE MF296A indoor router
+at `192.168.18.1`. Two boxes, two admin passwords. Other ZTE-based Airtel
+ODU/router combos will likely work too, since they share the firmware.
+
+**ZLT** — a ZLT/Tozed unit such as the **X17U** (with its W154R Plus indoor
+router), where both halves answer on one web interface at `192.168.1.1`. One
+box as far as this app is concerned: one address, one password.
+
+The ZLT units expose less than the ZTE pair — no QoS prioritisation, no
+per-client byte counters, and their monthly counter always resets on its start
+day. The dashboard asks the device what it supports and hides the controls it
+can't honour, rather than offering buttons that fail. Per-device usage still
+works either way: it comes from this app's own ledger, not the router's
+counters.
+
+If detection ever guesses wrong, pin it in `config.json`:
+
+```json
+"device": "zlt",
+"zlt": { "host": "192.168.1.1" }
+```
+
+`"device"` takes `auto` (the default), `zte`, or `zlt`.
 
 ## Requirements
 
 - Python 3.9+, nothing else — no external packages.
-- An Airtel ODU + indoor CPE router setup, both reachable on your LAN.
+- Either supported device family, reachable on your LAN.
 
 ## Safety
 
-The network-mode switch, QoS, APN edits, and restart buttons are **on by
-default**. If you'd rather just watch and not touch anything, set
+The network-mode switch, QoS (where the hardware has it), APN edits, and restart
+buttons are **on by default**. If you'd rather just watch and not touch anything, set
 `safety.allow_writes` to `false` in `config.json`.
 
 Every write that can drop your connection (mode switch, APN change) carries

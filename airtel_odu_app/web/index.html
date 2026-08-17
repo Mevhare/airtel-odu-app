@@ -16,13 +16,21 @@
     <h1>Sign in</h1>
     <p class="foot" id="login-sub">Use the same admin passwords as the outdoor unit and router.</p>
     <div class="form-stack">
-      <input class="select" id="login-odu-password" type="password"
-             placeholder="Outdoor unit password" autocomplete="current-password">
-      <div id="login-router-row" hidden>
-        <input class="select" id="login-router-password" type="password"
-               placeholder="Router password" autocomplete="current-password">
+      <div class="password-field">
+        <input class="select" id="login-odu-password" type="password"
+               placeholder="Outdoor unit password" autocomplete="current-password">
+        <button class="password-toggle" type="button" aria-pressed="false"
+                aria-label="Show password"><svg class="eye-show" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3.2"/></svg><svg class="eye-hide" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5c1.6 0 3 .45 4.2 1.1M21.5 12s-1.5 2.8-4.3 4.4M9.9 9.9a3.2 3.2 0 0 0 4.3 4.5M4 4l16 16"/></svg></button>
       </div>
-      <label class="login-check"><input type="checkbox" id="login-same" checked> Same password for both</label>
+      <div id="login-router-row" hidden>
+        <div class="password-field">
+          <input class="select" id="login-router-password" type="password"
+                 placeholder="Router password" autocomplete="current-password">
+          <button class="password-toggle" type="button" aria-pressed="false"
+                  aria-label="Show password"><svg class="eye-show" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3.2"/></svg><svg class="eye-hide" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5c1.6 0 3 .45 4.2 1.1M21.5 12s-1.5 2.8-4.3 4.4M9.9 9.9a3.2 3.2 0 0 0 4.3 4.5M4 4l16 16"/></svg></button>
+        </div>
+      </div>
+      <label class="login-check" id="login-same-row"><input type="checkbox" id="login-same" checked> Same password for both</label>
       <button class="btn" type="submit">Log in</button>
       <p class="foot" id="login-error"></p>
     </div>
@@ -311,7 +319,11 @@
         <form id="apn-form" class="form-stack">
           <input id="apn-input" placeholder="APN, e.g. airtelng" autocomplete="off" spellcheck="false">
           <input id="apn-username" placeholder="Username (optional)" autocomplete="off" spellcheck="false">
-          <input id="apn-password" placeholder="Password (optional)" autocomplete="off" spellcheck="false" type="password">
+          <div class="password-field">
+            <input id="apn-password" placeholder="Password (optional)" autocomplete="off" spellcheck="false" type="password">
+            <button class="password-toggle" type="button" aria-pressed="false"
+                    aria-label="Show password"><svg class="eye-show" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3.2"/></svg><svg class="eye-hide" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5c1.6 0 3 .45 4.2 1.1M21.5 12s-1.5 2.8-4.3 4.4M9.9 9.9a3.2 3.2 0 0 0 4.3 4.5M4 4l16 16"/></svg></button>
+          </div>
           <button class="btn danger" type="submit" id="apn-save">Save</button>
         </form>
         <p class="foot" id="apn-save-note"></p>
@@ -371,11 +383,14 @@
 
       <div class="adv-block">
         <h3>Restart</h3>
-        <p class="foot">Each takes a few minutes to come back. Everything drops meanwhile.</p>
-        <div class="actions">
+        <p class="foot" id="reboot-note">Each takes a few minutes to come back. Everything drops meanwhile.</p>
+        <div class="actions" id="reboot-pair">
           <button class="btn danger" data-reboot="odu">Outdoor unit</button>
           <button class="btn danger" data-reboot="router">Router</button>
           <button class="btn danger" data-reboot="both">Both</button>
+        </div>
+        <div class="actions" id="reboot-single" hidden>
+          <button class="btn danger" data-reboot="both">Restart the device</button>
         </div>
       </div>
     </details>
@@ -389,6 +404,9 @@
 </main>
 
 <nav class="tabs">
+  <!-- Desktop only: the phone's bottom bar has no room for a title, and the
+       page header already says where you are. -->
+  <p class="rail-title">Airtel ODU</p>
   <button class="tab active" data-view="home">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5"/><path d="M6.5 10v9.5h11V10"/></svg>
     <span>Home</span>

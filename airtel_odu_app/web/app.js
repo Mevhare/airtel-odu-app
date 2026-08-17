@@ -26,7 +26,19 @@ try {
 let writesEnabled = false;
 let currentMode = null;
 let modes = {};
+let modeGoals = {};       // which mode this hardware uses for each Optimise goal
 let autoReset = null;
+
+/* What is on the other end. The dashboard drives two families of hardware — the
+   ZTE outdoor unit plus indoor router, and single-box ZLT units — and they do
+   not offer the same things, so controls the device cannot honour are hidden
+   rather than left to fail on a tap. Everything defaults on until /api/session
+   says otherwise, so nothing flickers away on a slow first load. */
+let capabilities = {
+  qos: true, at: true, auto_reset: true, per_device_bytes: true,
+  network_mode: true, apn: true, sms: true, single_device: false,
+};
+const can = (name) => capabilities[name] !== false;
 let lastSignal = { strength: null, clarity: null };  // for the optimisation modes
 let optimiseMode = 'default';
 
@@ -232,11 +244,41 @@ document.querySelectorAll('[data-goto]').forEach((button) => {
   });
 });
 
+// -- what this hardware can do ----------------------------------------------
+
+/* Hide what the device on the other end cannot do, and reword what it does
+   differently. Cheap enough to re-run on every poll, and it has to be: the
+   answer only becomes known once the first reading comes back. */
+function applyCapabilities(reported) {
+  if (reported) capabilities = { ...capabilities, ...reported };
+
+  const single = capabilities.single_device === true;
+  document.body.classList.toggle('single-device', single);
+
+  // One box means one restart; the outdoor/router split is meaningless.
+  $('reboot-single').hidden = !single;
+  $('reboot-pair').hidden = single;
+  $('reboot-note').textContent = single
+    ? 'Takes a few minutes to come back. Everything drops meanwhile.'
+    : 'Each takes a few minutes to come back. Everything drops meanwhile.';
+
+  // Optimise leans on QoS prioritisation; without it the picker still changes
+  // the radio, so it stays — with honest wording.
+  $('optimise-note').textContent = can('qos')
+    ? 'Game switches to 4G-only and prioritises game traffic (QoS). Performance '
+      + 'adds 5G back in when your signal supports it and prioritises throughput.'
+    : 'Game switches to 4G-only, Performance puts 5G back in when your signal '
+      + 'supports it. This device has no traffic prioritisation, so the radio '
+      + 'is the whole of it.';
+}
+
 // -- overview ---------------------------------------------------------------
 
 function renderOverview(data) {
   writesEnabled = data.writes_enabled;
   modes = data.modes || {};
+  modeGoals = data.mode_goals || {};
+  applyCapabilities(data.capabilities);
 
   lastErrors = data.errors || {};
   const errors = Object.entries(lastErrors);
@@ -410,6 +452,16 @@ function renderAutoReset(settings) {
   }
 
   const cleared = settings.counters_cleared;
+
+  // Some units reset on their start day and cannot be talked out of it, so
+  // there is nothing to toggle -- only a fact to state.
+  if (autoReset.fixed || !can('auto_reset')) {
+    button.hidden = true;
+    note.textContent = `The device resets its own counters on day ${autoReset.day} `
+      + 'each month, and has no setting to stop doing so.';
+    return;
+  }
+  button.hidden = false;
   button.disabled = !writesEnabled;
   button.textContent = autoReset.enabled
     ? 'Turn monthly reset off' : 'Turn monthly reset on';
@@ -573,7 +625,8 @@ function renderDevices(payload) {
 
 function renderDeviceList() {
   $('devices-headline').textContent = lastErrors.router
-    ? 'The indoor router is not answering'
+    ? (capabilities.single_device === true
+        ? 'The device is not answering' : 'The indoor router is not answering')
       + (deviceStamp ? `, so this is the list as it was at ${clock(deviceStamp)}.`
         : ' and has not been reached yet.')
     : !deviceItems.length
@@ -587,7 +640,7 @@ function renderDeviceList() {
       <td>${escapeHtml(device.ip)}</td>
       <td>${escapeHtml(device.band || 'WiFi')}</td>
       <td>${num(device.rssi)} dBm</td>
-      <td class="live">${rate(device.down_speed)}</td>
+      <td class="live">${can('per_device_bytes') ? rate(device.down_speed) : '—'}</td>
       <td>${device.tracked_bytes === null || device.tracked_bytes === undefined
         ? 'not counted yet' : bytes(device.tracked_bytes)}</td>
     </tr>`).join('')
@@ -1175,6 +1228,7 @@ $('apn-form').addEventListener('submit', async (event) => {
     });
     $('apn-save-note').textContent = 'Saved. Reconnecting…';
     $('apn-password').value = '';
+    hidePasswords($('apn-form'));
     networkConfig = null;
     await loadNetworkConfig();
   } catch (err) {
@@ -1568,18 +1622,22 @@ async function switchMode(mode) {
   }
 }
 
-// Picks a concrete network mode for the chosen goal, using the last signal
-// reading. 5G NSA (LTE_AND_5G) only helps when it is itself healthy; when it
-// is weak or noisy, plain LTE is both faster in practice and steadier, since
-// there is no 5G layer dropping in and out on top of it.
+/* Picks a concrete network mode for the chosen goal, using the last signal
+   reading. Which mode *name* each goal maps to is the hardware's business and
+   comes from the server (mode_goals); the judgement below is this dashboard's.
+
+   5G only helps when it is itself healthy; when it is weak or noisy, plain 4G
+   is both faster in practice and steadier, since there is no 5G layer dropping
+   in and out on top of it. */
 function pickModeFor(goal) {
   const { strength, clarity } = lastSignal;
   const healthy5g = strength !== null && clarity !== null
     && strength >= -95 && clarity >= 13;
 
-  if (goal === 'game') return 'Only_LTE';
-  if (goal === 'performance') return healthy5g ? 'LTE_AND_5G' : 'Only_LTE';
-  return 'WL_AND_5G';
+  if (goal === 'performance' && !healthy5g) {
+    return modeGoals.performance_fallback || modeGoals.game;
+  }
+  return modeGoals[goal] || modeGoals.default;
 }
 
 const GOAL_LABEL = { default: 'Default', game: 'Game', performance: 'Performance' };
@@ -1608,6 +1666,11 @@ const REASON_FOR_GOAL = {
   game: '4G-only + game-priority traffic — use for gaming and calls.',
 };
 
+const REASON_WITHOUT_QOS = {
+  default: 'Auto radio — use for everyday browsing.',
+  game: '4G-only, the steadiest radio — use for gaming and calls.',
+};
+
 async function applyOptimise(goal) {
   const target = pickModeFor(goal);
   const sameMode = target === currentMode;
@@ -1616,10 +1679,12 @@ async function applyOptimise(goal) {
   // healthy enough -- otherwise pickModeFor() already fell back to 4G-only,
   // same radio as Game. Say so, rather than always claiming "best radio".
   const reason = goal === 'performance'
-    ? target === 'Only_LTE'
-      ? 'Signal too weak for 5G right now, so this falls back to 4G-only — still throughput priority.'
-      : '5G + throughput priority — use for downloads and streaming.'
-    : REASON_FOR_GOAL[goal] || '';
+    ? target === (modeGoals.performance_fallback || modeGoals.game)
+      ? 'Signal too weak for 5G right now, so this falls back to 4G-only.'
+        + (can('qos') ? ' Still throughput priority.' : '')
+      : '5G' + (can('qos') ? ' + throughput priority' : '')
+        + ' — use for downloads and streaming.'
+    : (can('qos') ? REASON_FOR_GOAL : REASON_WITHOUT_QOS)[goal] || '';
 
   if (!sameMode) {
     // Leave the toggle where it was until the switch is actually confirmed,
@@ -1640,14 +1705,18 @@ async function applyOptimise(goal) {
         body: JSON.stringify({ mode: target }),
       });
     }
-    const qos = QOS_FOR_GOAL[goal] || QOS_FOR_GOAL.default;
-    await getJson('/api/qos', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(qos),
-    });
+    // Devices without traffic prioritisation get the radio change and nothing
+    // else -- asking them for QoS would only earn a refusal.
+    const qos = can('qos') ? (QOS_FOR_GOAL[goal] || QOS_FOR_GOAL.default) : null;
+    if (qos) {
+      await getJson('/api/qos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(qos),
+      });
+    }
     $('optimise-note').textContent = `Optimised for ${goal}: ${name}`
-      + (qos.enable ? ', QoS prioritised.' : '.');
+      + (qos && qos.enable ? ', QoS prioritised.' : '.');
   } catch (err) {
     $('optimise-note').textContent = err.message;
   }
@@ -1752,9 +1821,14 @@ $('run-speed').addEventListener('click', async (event) => {
 document.querySelectorAll('[data-reboot]').forEach((button) => {
   button.addEventListener('click', async () => {
     const target = button.dataset.reboot;
-    const label = { odu: 'the outdoor unit', router: 'the indoor router',
-                    both: 'both the router and the outdoor unit' }[target];
-    const detail = target === 'both'
+    const single = capabilities.single_device === true;
+    const label = single ? 'the device'
+      : { odu: 'the outdoor unit', router: 'the indoor router',
+          both: 'both the router and the outdoor unit' }[target];
+    const detail = single
+      ? 'WiFi and the mobile link both go down for a few minutes — including '
+        + 'this dashboard.'
+      : target === 'both'
       ? 'The router restarts first, then the outdoor unit, so there is a LAN '
         + 'ready by the time the mobile link returns. Expect three to five '
         + 'minutes with nothing working — including this dashboard.'
@@ -1822,6 +1896,7 @@ async function tickLive() {
 }
 
 function updateDeviceSpeeds(rows) {
+  if (!can('per_device_bytes')) return;   // nothing to measure a rate from
   const byMac = new Map(rows.map((row) => [row.mac, row]));
   deviceItems.forEach((device) => {
     const row = byMac.get(device.mac);
@@ -1893,11 +1968,27 @@ function startApp() {
 async function boot() {
   try {
     const session = await getJson('/api/session');
+    applyCapabilities(session.capabilities);
+    applyLoginShape();
     if (session.authenticated) startApp();
     else showLogin();
   } catch (err) {
     showLogin();
   }
+}
+
+/* A single-box unit has one admin password, so asking for two — and offering
+   to use the same one for both — would be asking about a device that is not
+   there. */
+function applyLoginShape() {
+  const single = capabilities.single_device === true;
+  $('login-same-row').hidden = single;
+  $('login-router-row').hidden = single || $('login-same').checked;
+  $('login-odu-password').placeholder = single
+    ? 'Device password' : 'Outdoor unit password';
+  $('login-sub').textContent = single
+    ? 'The admin password you use on the device\u2019s own web page.'
+    : 'Use the same admin passwords as the outdoor unit and router.';
 }
 
 $('login-same').addEventListener('change', (e) => {
@@ -1907,10 +1998,37 @@ $('login-same').addEventListener('change', (e) => {
     : 'Enter the admin passwords for the outdoor unit and router separately.';
 });
 
+/* Show/hide the password. A button rather than a checkbox: it is an action on
+   the field, not a setting, and it must not submit the form it sits in. The
+   field goes back to hidden whenever it is emptied, so a password never
+   survives on screen into the next sign-in. */
+function hidePasswords(root = document) {
+  root.querySelectorAll('.password-toggle').forEach((button) => {
+    button.parentElement.querySelector('input').type = 'password';
+    button.classList.remove('on');
+    button.setAttribute('aria-pressed', 'false');
+    button.setAttribute('aria-label', 'Show password');
+  });
+}
+
+document.querySelectorAll('.password-toggle').forEach((button) => {
+  button.addEventListener('click', () => {
+    const input = button.parentElement.querySelector('input');
+    const showing = input.type !== 'password';
+    input.type = showing ? 'password' : 'text';
+    button.classList.toggle('on', !showing);
+    button.setAttribute('aria-pressed', String(!showing));
+    button.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+    // Tapping the eye shouldn't cost you your place in the field.
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  });
+});
+
 $('login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const oduPassword = $('login-odu-password').value;
-  const routerPassword = $('login-same').checked
+  const routerPassword = capabilities.single_device === true || $('login-same').checked
     ? oduPassword : $('login-router-password').value;
   const error = $('login-error');
   error.textContent = '';
@@ -1924,11 +2042,13 @@ $('login-form').addEventListener('submit', async (e) => {
     });
     $('login-odu-password').value = '';
     $('login-router-password').value = '';
+    hidePasswords();
     startApp();
   } catch (err) {
-    error.textContent = err.field === 'odu' ? `Outdoor unit: ${err.message}`
-      : err.field === 'router' ? `Router: ${err.message}`
-        : err.message;
+    error.textContent = capabilities.single_device === true ? err.message
+      : err.field === 'odu' ? `Outdoor unit: ${err.message}`
+        : err.field === 'router' ? `Router: ${err.message}`
+          : err.message;
   } finally {
     submitButton.disabled = false;
   }

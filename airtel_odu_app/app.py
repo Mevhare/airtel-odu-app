@@ -23,8 +23,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .core import db, sms
 from .core.collector import Collector
-from .core.odu import NET_MODES, QOS_PRIORITIES, OduError, optimise_mode_from_qos
-from .core.router import RouterError
+from .core.errors import DeviceError
+from .core.odu import QOS_PRIORITIES, optimise_mode_from_qos
 
 SESSION_COOKIE = "wifiapp_session"
 # Reachable without a session, so the SPA can load and show its own login form.
@@ -114,6 +114,10 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(401, {"error": "not logged in"})
                 return self._api_get(path, query)
             return self._static(path)
+        except DeviceError as exc:
+            # The hardware refused or is not answering -- that is a bad gateway,
+            # not a bug in here, and the message is worth showing as-is.
+            return self._send(502, {"error": str(exc)})
         except Exception as exc:
             return self._send(500, {"error": str(exc)})
 
@@ -129,6 +133,8 @@ class Handler(BaseHTTPRequestHandler):
             if path not in PUBLIC_API and not self._authenticated():
                 return self._send(401, {"error": "not logged in"})
             return self._api_post(path, payload)
+        except DeviceError as exc:
+            return self._send(502, {"error": str(exc)})
         except Exception as exc:
             return self._send(500, {"error": str(exc)})
 
@@ -165,7 +171,14 @@ class Handler(BaseHTTPRequestHandler):
         hours = int((query.get("hours") or ["24"])[0])
 
         if path == "/api/session":
-            return self._send(200, {"authenticated": self._authenticated()})
+            # The device description rides along unauthenticated: the login
+            # screen needs it to know whether to ask for one password or two,
+            # and it says nothing a stranger on the LAN could not see anyway.
+            return self._send(200, {
+                "authenticated": self._authenticated(),
+                "device": collector.device_kind,
+                "capabilities": dict(collector.odu.capabilities),
+            })
 
         if path == "/api/overview":
             snapshot = collector.snapshot()
@@ -173,10 +186,9 @@ class Handler(BaseHTTPRequestHandler):
             snapshot["uptime_24h"] = db.uptime_ratio(24)
             snapshot["writes_enabled"] = config["safety"]["allow_writes"]
             snapshot["projection"] = self._projection(snapshot)
-            snapshot["modes"] = NET_MODES
+            snapshot.update(self._device_info(collector))
             snapshot["billing_day"] = config["alerts"].get("billing_day", 1)
-            snapshot["optimise_mode"] = optimise_mode_from_qos(
-                ((snapshot.get("odu") or {}).get("settings") or {}).get("qos"))
+            snapshot["optimise_mode"] = self._optimise_mode(collector, snapshot)
             return self._send(200, snapshot)
 
         if path == "/api/lan-url":
@@ -220,13 +232,13 @@ class Handler(BaseHTTPRequestHandler):
                     "apn": collector.odu.apn_settings(),
                     "lan": collector.odu.lan_settings(),
                 })
-            except (OduError, OSError) as exc:
+            except (DeviceError, OSError) as exc:
                 return self._send(502, {"error": str(exc)})
 
         if path == "/api/qos":
             try:
                 return self._send(200, collector.odu.qos_settings())
-            except OduError as exc:
+            except DeviceError as exc:
                 return self._send(502, {"error": str(exc)})
 
         if path == "/api/history/signal":
@@ -298,6 +310,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(502, {"error": str(exc)})
 
         if path == "/api/at":
+            if not collector.odu.capabilities.get("at"):
+                return self._send(501, {
+                    "error": "this device does not expose an AT passthrough to "
+                             "the account the dashboard signs in with"})
             command = (query.get("cmd") or [""])[0].strip()
             if not SAFE_AT.match(command):
                 return self._send(400, {
@@ -307,7 +323,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 return self._send(200, {"cmd": command,
                                         "result": collector.odu.at(command)})
-            except OduError as exc:
+            except DeviceError as exc:
                 return self._send(502, {"error": str(exc)})
 
         return self._send(404, {"error": "no such endpoint"})
@@ -330,7 +346,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/network-mode":
             mode = payload.get("mode")
-            if mode not in NET_MODES:
+            if mode not in collector.odu.net_modes:
                 return self._send(400, {"error": "unrecognised mode %r" % (mode,)})
             previous = collector.snapshot()["odu"]["netinfo"].get("net_select")
             collector.odu.set_network_mode(mode)
@@ -340,6 +356,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {"ok": True, "mode": mode, "previous": previous})
 
         if path == "/api/qos":
+            if not collector.odu.capabilities.get("qos"):
+                return self._send(501, {
+                    "error": "this device has no QoS traffic prioritisation"})
             enable = bool(payload.get("enable"))
             priority = payload.get("priority", 0)
             try:
@@ -350,7 +369,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(400, {"error": "unrecognised priority %r" % (priority,)})
             try:
                 collector.odu.set_qos(enable, priority)
-            except OduError as exc:
+            except DeviceError as exc:
                 return self._send(502, {"error": str(exc)})
             collector.note_qos_change(enable, priority)
             db.log_event("qos_change", "QoS %s (priority %d)"
@@ -362,12 +381,18 @@ class Handler(BaseHTTPRequestHandler):
             if target not in ("odu", "router", "both"):
                 return self._send(400,
                                   {"error": "target must be 'odu', 'router' or 'both'"})
-            # The router first: it comes back faster, so by the time the outdoor
-            # unit has finished booting there is already a LAN to serve.
-            if target in ("router", "both"):
-                collector.router.post({"goformId": "REBOOT_DEVICE"})
-            if target in ("odu", "both"):
-                collector.odu.call("system", "reboot")
+            if collector.odu.capabilities.get("single_device"):
+                # One box wearing both hats, so every target means the same
+                # restart -- and doing it twice would only cut the second one
+                # short.
+                collector.odu.reboot()
+            else:
+                # The router first: it comes back faster, so by the time the
+                # outdoor unit has finished booting there is already a LAN.
+                if target in ("router", "both"):
+                    collector.router.reboot()
+                if target in ("odu", "both"):
+                    collector.odu.reboot()
             db.log_event("reboot", "%s reboot requested from the dashboard" % target)
             return self._send(200, {"ok": True, "target": target})
 
@@ -394,7 +419,7 @@ class Handler(BaseHTTPRequestHandler):
                     profile_id=previous.get("profileId") if previous else None,
                     pdp_type=payload.get("pdp_type", 1),
                     auth_mode=payload.get("auth_mode", 0))
-            except OduError as exc:
+            except DeviceError as exc:
                 return self._send(502, {"error": str(exc)})
             db.log_event("apn_change", "APN changed to %s" % apn)
             self._arm_apn_revert(collector, previous,
@@ -431,29 +456,36 @@ class Handler(BaseHTTPRequestHandler):
         never risks tripping the ODU's login rate limiter on its own account.
         """
         odu_password = (payload.get("odu_password") or "").strip()
-        router_password = (payload.get("router_password") or "").strip()
+        # A unit that is its own router has one password and one session, so
+        # the second field is neither asked for nor used.
+        single = collector.odu.capabilities.get("single_device")
+        router_password = odu_password if single \
+            else (payload.get("router_password") or "").strip()
         if not odu_password or not router_password:
-            return self._send(400, {"error": "both passwords are required"})
+            return self._send(400, {
+                "error": "a password is required" if single
+                         else "both passwords are required"})
 
         previous_odu = collector.odu.password
         collector.odu.password = odu_password
         collector.odu.session = None
         try:
             collector.odu.login()
-        except OduError as exc:
+        except DeviceError as exc:
             collector.odu.password = previous_odu
             collector.odu.session = None
             return self._send(401, {"error": str(exc), "field": "odu"})
 
-        previous_router = collector.router.password
-        collector.router.password = router_password
-        collector.router.logged_in = False
-        try:
-            collector.router.login()
-        except RouterError as exc:
-            collector.router.password = previous_router
+        if not single:
+            previous_router = collector.router.password
+            collector.router.password = router_password
             collector.router.logged_in = False
-            return self._send(401, {"error": str(exc), "field": "router"})
+            try:
+                collector.router.login()
+            except DeviceError as exc:
+                collector.router.password = previous_router
+                collector.router.logged_in = False
+                return self._send(401, {"error": str(exc), "field": "router"})
 
         config["odu"]["password"] = odu_password
         config["router"]["password"] = router_password
@@ -502,6 +534,39 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- helpers -----------------------------------------------------------
 
+    def _device_info(self, collector):
+        """What is on the other end, and what it can be asked to do.
+
+        The dashboard is built for two families of hardware that differ in what
+        they expose (see ``core/hardware.py``), so the controls it draws follow
+        this rather than assuming the ZTE pair.
+        """
+        return {
+            "device": collector.device_kind,
+            "capabilities": dict(collector.odu.capabilities),
+            "modes": collector.odu.net_modes,
+            "mode_goals": collector.odu.mode_goals,
+        }
+
+    def _optimise_mode(self, collector, snapshot):
+        """Which Optimise goal the hardware currently reflects.
+
+        On the ZTE pair the QoS priority is the tell, since the radio mode alone
+        does not distinguish Game from Performance. Hardware without QoS has
+        only the radio to go on, so the goal is read back from the mode itself --
+        which is the whole of what Optimise changes there.
+        """
+        odu = snapshot.get("odu") or {}
+        if collector.odu.capabilities.get("qos"):
+            return optimise_mode_from_qos((odu.get("settings") or {}).get("qos"))
+
+        current = (odu.get("netinfo") or {}).get("net_select")
+        goals = collector.odu.mode_goals
+        for goal in ("game", "performance", "default"):
+            if current and goals.get(goal) == current:
+                return goal
+        return None
+
     def _arm_revert(self, collector, previous, seconds):
         """Undo a mode change if the link has not come back in time."""
         def revert():
@@ -512,7 +577,7 @@ class Handler(BaseHTTPRequestHandler):
                     collector.odu.set_network_mode(previous)
                     db.log_event("mode_revert",
                                  "no link after %ds, reverted to %s" % (seconds, previous))
-                except OduError as exc:
+                except DeviceError as exc:
                     db.log_event("mode_revert_failed", str(exc))
 
         threading.Thread(target=revert, daemon=True).start()
@@ -534,7 +599,7 @@ class Handler(BaseHTTPRequestHandler):
                         pdp_type=previous.get("pdpType", 1),
                         auth_mode=previous.get("pppAuthMode", 0))
                     db.log_event("apn_revert", "no link after %ds, reverted APN" % seconds)
-                except OduError as exc:
+                except DeviceError as exc:
                     db.log_event("apn_revert_failed", str(exc))
 
         threading.Thread(target=revert, daemon=True).start()
