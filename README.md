@@ -44,9 +44,12 @@ pip install airtel-odu-app
 airtel-odu-app
 ```
 
-Then open <http://localhost:8080>. First run creates a `config.json` in
-whatever folder you ran it from — open it, put in your ODU and router's
-address and password, and restart.
+Then open <http://localhost:8080> and log in with the same admin password you'd
+use on the ODU/router's own web page — that's it, no files to edit.
+
+If your ODU or router live at a non-default LAN address (the usual ones are
+`192.168.254.1` and `192.168.18.1`), edit the `host` fields in the
+`config.json` this created before logging in.
 
 To reach the dashboard from your phone, use your PC's LAN address instead of
 `localhost` (shown in the terminal when it starts), or scan the QR code in
