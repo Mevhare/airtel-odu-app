@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>WiFi</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="banner" class="banner" hidden></div>
+
+<div id="login-screen" hidden>
+  <form class="card login-card" id="login-form">
+    <h1>Sign in</h1>
+    <p class="foot" id="login-sub">Use the same admin passwords as the outdoor unit and router.</p>
+    <div class="form-stack">
+      <input class="select" id="login-odu-password" type="password"
+             placeholder="Outdoor unit password" autocomplete="current-password">
+      <div id="login-router-row" hidden>
+        <input class="select" id="login-router-password" type="password"
+               placeholder="Router password" autocomplete="current-password">
+      </div>
+      <label class="login-check"><input type="checkbox" id="login-same" checked> Same password for both</label>
+      <button class="btn" type="submit">Log in</button>
+      <p class="foot" id="login-error"></p>
+    </div>
+  </form>
+</div>
+
+<main>
+
+  <!-- ================= HOME ================= -->
+  <section class="view" id="view-home">
+    <header class="hero">
+      <p class="hero-eyebrow">
+        <span class="dot" id="dot"></span><span id="operator">—</span>
+        <button class="hero-number" id="hero-number" hidden></button>
+      </p>
+      <h1 class="hero-status" id="status">Connecting</h1>
+      <p class="hero-sub" id="status-sub">Reading the outdoor unit…</p>
+      <div class="pills">
+        <span class="pill" id="pill-tech">—</span>
+        <span class="pill" id="pill-grade"><span class="bars" id="bars"></span><span id="grade-text">—</span></span>
+        <span class="pill pill-icon" id="pill-jitter">
+          <svg class="pill-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg>
+          <span id="jitter-text">—</span>
+        </span>
+        <button class="pill pill-icon" id="pill-devices" data-goto="devices">
+          <svg class="pill-svg" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="11" rx="2"/><path d="M8 20h8"/></svg>
+          <span id="devices-text">Devices</span>
+        </button>
+        <button class="pill pill-icon" id="pill-optimise" data-goto="settings" data-scroll-to="optimise-card">
+          <svg class="pill-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16 16 10"/><circle cx="12" cy="16" r="1.1" fill="currentColor" stroke="none"/></svg>
+          <span id="optimise-text">Optimise</span>
+        </button>
+      </div>
+    </header>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>This billing cycle</h2>
+        <button class="link" data-goto="usage">Details</button>
+      </div>
+      <div class="grid-4">
+        <div><p class="label">This cycle</p><p class="mid" id="cycle-total">—</p><p class="foot" id="cycle-total-delta"></p></div>
+        <div><p class="label" id="cycle-today-label">Today</p><p class="mid" id="cycle-today">—</p><p class="foot" id="cycle-today-delta"></p></div>
+        <div><p class="label">Daily average</p><p class="mid" id="cycle-avg">—</p><p class="foot" id="cycle-avg-delta"></p></div>
+        <div><p class="label">Projected</p><p class="mid" id="cycle-projected">—</p><p class="foot" id="cycle-projected-delta"></p></div>
+      </div>
+      <p class="foot" id="cycle-range" style="margin-top:12px">—</p>
+      <div id="cap-block" hidden>
+        <div class="bar"><div class="fill" id="cap-fill"></div></div>
+        <p class="foot" id="cap-note">—</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="live">
+        <div>
+          <p class="label">Download</p>
+          <p class="big" id="down-speed">—</p>
+        </div>
+        <div>
+          <p class="label">Upload</p>
+          <p class="big" id="up-speed">—</p>
+        </div>
+      </div>
+      <div class="plot">
+        <canvas class="chart" id="chart-live" height="130"></canvas>
+        <div class="tip" id="live-tip" hidden></div>
+      </div>
+      <div class="chart-legend">
+        <span><i class="swatch down"></i>Download</span>
+        <span><i class="swatch up"></i>Upload</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Recent activity</h2>
+        <button class="link" id="activity-help">What's this?</button>
+      </div>
+      <p class="foot explain" id="activity-explain" hidden>
+        This is a log of things that happened to the connection while the dashboard
+        was running — the internet dropping and coming back, the signal getting
+        weak, your data cap thresholds being crossed, and any change you make from
+        the Settings tab. It is the record you check after the WiFi has misbehaved,
+        so you can see when and how often, instead of guessing.
+      </p>
+      <ul class="events" id="events"></ul>
+      <button class="link" id="events-more" hidden></button>
+    </section>
+  </section>
+
+  <!-- ================= USAGE ================= -->
+  <section class="view" id="view-usage" hidden>
+    <header class="page-head">
+      <h1>Data</h1>
+      <p class="foot" id="usage-headline">—</p>
+      <p class="foot explain" id="cycle-caveat" hidden></p>
+    </header>
+
+    <section class="card">
+      <div class="field-row">
+        <select class="select" id="range-select">
+          <option value="week" selected>Last 7 days</option>
+          <option value="month">Last 30 days</option>
+          <option value="cycle">This billing cycle</option>
+          <option value="all">All time</option>
+          <option value="custom">Custom range…</option>
+        </select>
+      </div>
+      <div class="field-row" id="custom-range" hidden>
+        <input type="date" class="select" id="range-since">
+        <span class="foot">to</span>
+        <input type="date" class="select" id="range-until">
+        <button class="btn" id="range-apply">Apply</button>
+      </div>
+
+      <p class="foot" id="group-label">Group by</p>
+      <div class="segmented" id="group-picker">
+        <button data-group="" class="on">Auto</button>
+        <button data-group="day">Day</button>
+        <button data-group="week">Week</button>
+        <button data-group="month">Month</button>
+      </div>
+
+      <div class="chart-head">
+        <div>
+          <p class="label" id="chart-title">Last 24 hours</p>
+          <p class="chart-value" id="chart-total">—</p>
+          <p class="foot" id="chart-delta"></p>
+        </div>
+        <button class="link" id="usage-export">Export CSV</button>
+      </div>
+      <div class="plot">
+        <canvas class="chart tall" id="chart-usage" height="180"></canvas>
+        <div class="tip" id="usage-tip" hidden></div>
+      </div>
+      <p class="foot" id="chart-hint">Tap a bar to read it.</p>
+      <p class="foot explain" id="source-note">From Airtel's daily usage texts. Covers the
+        whole day, even when this dashboard was off.</p>
+    </section>
+
+    <details class="card" id="devices-panel" open>
+      <summary><h2>Where it went</h2><span class="foot" id="devices-sub"></span></summary>
+      <div class="rows" id="usage-devices"></div>
+      <p class="foot explain">
+        Our own per-device count, not the router's running total — see
+        <button class="link" data-goto="settings" data-scroll-to="why-numbers-differ">why the numbers differ</button>.
+      </p>
+    </details>
+
+  </section>
+
+  <!-- ================= MESSAGES ================= -->
+  <section class="view" id="view-sms" hidden>
+    <header class="page-head">
+      <h1>Texts</h1>
+      <p class="foot" id="sms-headline">—</p>
+    </header>
+    <section class="card">
+      <div class="card-head"><h2>This line</h2></div>
+      <div class="rows" id="sim-rows"></div>
+    </section>
+    <div class="toolbar" id="sms-thread-header" hidden>
+      <button class="link" id="sms-back">‹ Back</button>
+      <span class="foot" id="sms-thread-title"></span>
+    </div>
+
+    <div class="segmented" id="sms-filter">
+      <button data-sms="" class="on">All</button>
+      <button data-sms="unread">Unread</button>
+      <button data-sms="other">Not usage alerts</button>
+    </div>
+
+    <div class="toolbar" id="sms-toolbar" hidden>
+      <button class="link" id="sms-select">Select</button>
+      <span class="foot" id="sms-selected"></span>
+      <span class="spacer"></span>
+      <button class="link" id="sms-all" hidden>All</button>
+      <button class="link" id="sms-mark" hidden>Mark read</button>
+      <button class="link danger" id="sms-delete" hidden>Delete</button>
+    </div>
+
+    <section class="list" id="sms-list"></section>
+  </section>
+
+  <!-- ================= DEVICES ================= -->
+  <section class="view" id="view-devices" hidden>
+    <header class="page-head">
+      <h1>Devices</h1>
+      <p class="foot" id="devices-headline">—</p>
+    </header>
+    <div class="field-row">
+      <select class="select" id="device-range-select">
+        <option value="day">Last 24 hours</option>
+        <option value="week" selected>Last 7 days</option>
+        <option value="month">Last 30 days</option>
+        <option value="cycle">This billing cycle</option>
+        <option value="all">All time</option>
+        <option value="custom">Custom range…</option>
+      </select>
+    </div>
+    <div class="field-row" id="device-custom-range" hidden>
+      <input type="date" class="select" id="device-range-since">
+      <span class="foot">to</span>
+      <input type="date" class="select" id="device-range-until">
+      <button class="btn" id="device-range-apply">Apply</button>
+    </div>
+    <div class="table-wrap">
+      <table class="dev-table">
+        <thead>
+          <tr>
+            <th>Device</th>
+            <th>IP</th>
+            <th>Band</th>
+            <th id="th-signal">Signal<button type="button" class="th-info" data-tip="Signal strength as the router sees it, in dBm. Closer to 0 is stronger." aria-label="What is Signal?">i</button></th>
+            <th id="th-speed">Speed<button type="button" class="th-info" data-tip="Average over the last half minute, worked out from the device's own byte counters. The router only recalculates its own reading every 20–30 seconds. The Home tab's speed is different — that one comes from the outdoor unit and updates every second." aria-label="What is Speed?">i</button></th>
+            <th id="th-used">Used<button type="button" class="th-info" data-tip="This dashboard's own tally for the period picked above." aria-label="What is Used?">i</button></th>
+          </tr>
+        </thead>
+        <tbody id="device-list"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= SETTINGS ================= -->
+  <section class="view" id="view-settings" hidden>
+    <header class="page-head"><h1>Settings</h1></header>
+
+    <details class="card" id="phone-card">
+      <summary><h2>Add to phone</h2></summary>
+      <p class="foot">Scan with your phone's camera to open this dashboard, while on the same WiFi.</p>
+      <canvas id="phone-qr" width="220" height="220"></canvas>
+      <p class="foot" id="phone-qr-note"></p>
+    </details>
+
+    <details class="card">
+      <summary><h2>Network mode</h2><span class="foot" id="mode-current">—</span></summary>
+      <p class="foot" id="mode-note">—</p>
+      <div class="modes" id="modes"></div>
+    </details>
+
+    <section class="card" id="optimise-card">
+      <div class="card-head"><h2>Optimise network for</h2></div>
+      <div class="segmented" id="optimise-picker">
+        <button data-opt="default" class="on">Default</button>
+        <button data-opt="game">Game</button>
+        <button data-opt="performance">Performance</button>
+      </div>
+      <p class="foot" id="optimise-note">
+        Game switches to 4G-only and prioritises game traffic (QoS). Performance
+        adds 5G back in when your signal supports it and prioritises throughput.
+      </p>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>Billing cycle</h2></div>
+      <p class="foot">Day of the month your subscription typically renews.</p>
+      <form id="billing-day-form" class="form-stack">
+        <input id="billing-day-input" type="number" min="1" max="28" inputmode="numeric">
+        <button class="btn" type="submit">Save</button>
+      </form>
+      <p class="foot" id="billing-day-note"></p>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>Tests</h2></div>
+      <div class="actions">
+        <button class="btn" id="run-diag">Connection test</button>
+        <button class="btn" id="run-speed">Speed test</button>
+      </div>
+      <p class="foot" id="speed-note">Uses about 10 MB of your allowance each time.</p>
+      <div class="rows" id="diag-rows"></div>
+    </section>
+
+    <details class="card" id="connection-card">
+      <summary><h2>Connection settings</h2><span class="foot" id="apn-sub">APN, addresses</span></summary>
+      <div class="rows" id="apn-rows"></div>
+      <p class="foot explain" id="apn-note"></p>
+
+      <div class="adv-block">
+        <h3>Access point (APN)</h3>
+        <p class="foot">
+          The name the modem dials to reach Airtel. Drops the connection while it
+          re-dials; reverts automatically if it doesn't come back.
+        </p>
+        <form id="apn-form" class="form-stack">
+          <input id="apn-input" placeholder="APN, e.g. airtelng" autocomplete="off" spellcheck="false">
+          <input id="apn-username" placeholder="Username (optional)" autocomplete="off" spellcheck="false">
+          <input id="apn-password" placeholder="Password (optional)" autocomplete="off" spellcheck="false" type="password">
+          <button class="btn danger" type="submit" id="apn-save">Save</button>
+        </form>
+        <p class="foot" id="apn-save-note"></p>
+      </div>
+    </details>
+
+    <details class="card" id="why-numbers-differ">
+      <summary><h2>Why the numbers differ</h2><span class="foot">Device totals vs. data totals</span></summary>
+      <p class="foot explain" style="margin-top:14px">
+        Devices-tab totals come from the router: WiFi traffic only, since its last
+        restart. Data-tab totals come from the outdoor unit: everything on the
+        mobile link since install, wired included. They measure different things
+        over different spans, so they won't match — use device figures to compare
+        devices, and the outdoor unit's figures for your allowance.
+      </p>
+    </details>
+
+    <details class="card advanced">
+      <summary><h2>Advanced</h2><span class="foot">Radio internals, signal, reboots</span></summary>
+
+      <div class="adv-block">
+        <h3>Carrier aggregation</h3>
+        <p class="foot">
+          Frequency blocks combined for extra capacity. More rows means more
+          headroom.
+        </p>
+        <div class="rows" id="carrier-rows"></div>
+      </div>
+
+      <div class="adv-block">
+        <h3>Signal</h3>
+        <div class="rows" id="signal-rows"></div>
+        <p class="foot explain" id="signal-explain" style="margin-top:14px"></p>
+      </div>
+
+      <div class="adv-block">
+        <h3>Connection</h3>
+        <div class="rows">
+          <div><span class="key">Devices online</span><span class="val" id="device-count">—</span></div>
+          <div><span class="key">Uptime (24h)</span><span class="val" id="uptime">—</span></div>
+        </div>
+      </div>
+
+      <div class="adv-block">
+        <h3>Radio detail</h3>
+        <div class="rows" id="radio-rows"></div>
+      </div>
+
+      <div class="adv-block">
+        <h3>Outdoor unit's own reset</h3>
+        <p class="foot">Separate from this dashboard's own tracking above — this is the counter the modem itself keeps.</p>
+        <p class="foot" id="reset-note" style="margin-top:14px">—</p>
+        <div class="actions">
+          <button class="btn" id="toggle-reset">—</button>
+        </div>
+      </div>
+
+      <div class="adv-block">
+        <h3>Restart</h3>
+        <p class="foot">Each takes a few minutes to come back. Everything drops meanwhile.</p>
+        <div class="actions">
+          <button class="btn danger" data-reboot="odu">Outdoor unit</button>
+          <button class="btn danger" data-reboot="router">Router</button>
+          <button class="btn danger" data-reboot="both">Both</button>
+        </div>
+      </div>
+    </details>
+
+    <section class="card" id="logout-card">
+      <div class="card-head"><h2>Session</h2></div>
+      <button class="btn danger" id="logout-btn">Log out</button>
+    </section>
+  </section>
+
+</main>
+
+<nav class="tabs">
+  <button class="tab active" data-view="home">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5"/><path d="M6.5 10v9.5h11V10"/></svg>
+    <span>Home</span>
+  </button>
+  <button class="tab" data-view="usage">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V11"/><path d="M12 19V5"/><path d="M19 19v-6"/></svg>
+    <span>Data</span>
+  </button>
+  <button class="tab" data-view="devices">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="11" rx="2"/><path d="M8 20h8"/></svg>
+    <span>Devices</span>
+  </button>
+  <button class="tab" data-view="sms">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5h16v11H9l-5 3.5z"/></svg>
+    <span>Texts</span><span class="badge" id="sms-badge" hidden></span>
+  </button>
+  <button class="tab" data-view="settings">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.5 1.5M16.5 16.5 18 18M18 6l-1.5 1.5M7.5 16.5 6 18"/></svg>
+    <span>Settings</span>
+  </button>
+</nav>
+
+<script src="qrcode.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

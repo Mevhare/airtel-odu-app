@@ -1,0 +1,9 @@
+config.json
+wifi.db
+wifi.db-shm
+wifi.db-wal
+server.log
+server.err.log
+__pycache__/
+*.pyc
+.claude/
