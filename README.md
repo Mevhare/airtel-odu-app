@@ -47,10 +47,6 @@ airtel-odu-app
 Then open <http://localhost:8080> and log in with the same admin password you'd
 use on the ODU/router's own web page — that's it, no files to edit.
 
-If your ODU or router live at a non-default LAN address (the usual ones are
-`192.168.254.1` and `192.168.18.1`), edit the `host` fields in the
-`config.json` this created before logging in.
-
 To reach the dashboard from your phone, use your PC's LAN address instead of
 `localhost` (shown in the terminal when it starts), or scan the QR code in
 Settings.
@@ -64,12 +60,18 @@ pip install -e .
 airtel-odu-app
 ```
 
+## Built for
+
+An Airtel fixed-wireless setup with a ZTE outdoor unit (ODU) and a ZTE MF296A
+indoor router, talking to each other at their fixed LAN addresses —
+`192.168.254.1` for the ODU, `192.168.18.1` for the router. That pairing is
+what this app was built and tested against; other ZTE-based Airtel ODU/router
+combos will likely work too since they share the same underlying firmware.
+
 ## Requirements
 
 - Python 3.9+, nothing else — no external packages.
 - An Airtel ODU + indoor CPE router setup, both reachable on your LAN.
-- The default addresses are `192.168.254.1` (ODU) and `192.168.18.1`
-  (router) — edit `config.json` if yours differ.
 
 ## Safety
 
