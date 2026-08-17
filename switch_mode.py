@@ -4,8 +4,8 @@ import json
 import sys
 import time
 
-from core import db
-from core.odu import NET_MODES, Odu
+from airtel_odu_app.core import db
+from airtel_odu_app.core.odu import NET_MODES, Odu
 
 TARGET = sys.argv[1] if len(sys.argv) > 1 else "LTE_AND_5G"
 GRACE = 90

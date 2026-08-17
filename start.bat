@@ -7,5 +7,5 @@ for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /c:"IPv4"') do (
 )
 echo   This PC:       http://localhost:8080
 echo.
-python app.py
+python -m airtel_odu_app.app
 pause

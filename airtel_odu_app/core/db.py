@@ -9,7 +9,10 @@ import os
 import sqlite3
 import time
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "wifi.db")
+# Same data-directory convention as app.py's CONFIG_PATH -- wherever the app
+# is run from, not wherever the package code was installed.
+DATA_DIR = os.environ.get("AIRTEL_ODU_APP_DATA_DIR") or os.getcwd()
+DB_PATH = os.path.join(DATA_DIR, "wifi.db")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS signal_samples (

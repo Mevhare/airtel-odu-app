@@ -3,7 +3,7 @@
 Serves a small JSON API and the static dashboard on the LAN, so any phone on the
 same WiFi can open it. Nothing leaves the network and there is no account.
 
-Run with:  python app.py
+Run with:  airtel-odu-app
 """
 
 import datetime
@@ -12,6 +12,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import subprocess
 import sys
 import threading
@@ -20,18 +21,26 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from core import db, sms
-from core.collector import Collector
-from core.odu import NET_MODES, QOS_PRIORITIES, OduError, optimise_mode_from_qos
-from core.router import RouterError
+from .core import db, sms
+from .core.collector import Collector
+from .core.odu import NET_MODES, QOS_PRIORITIES, OduError, optimise_mode_from_qos
+from .core.router import RouterError
 
 SESSION_COOKIE = "wifiapp_session"
 # Reachable without a session, so the SPA can load and show its own login form.
 PUBLIC_API = {"/api/session", "/api/login"}
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-WEB_DIR = os.path.join(BASE_DIR, "web")
-CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
+# Where the code (and its bundled web assets / example config) lives -- fixed,
+# wherever the package was installed.
+PKG_DIR = os.path.dirname(os.path.abspath(__file__))
+WEB_DIR = os.path.join(PKG_DIR, "web")
+
+# Where this install's own data lives -- the directory the app is run from, so
+# a pip-installed console script keeps its config/db next to wherever the user
+# chose to run it, not buried in site-packages. Override with the env var if
+# you want to run multiple instances or keep data elsewhere.
+DATA_DIR = os.environ.get("AIRTEL_ODU_APP_DATA_DIR") or os.getcwd()
+CONFIG_PATH = os.path.join(DATA_DIR, "config.json")
 
 # AT commands are a genuine escape hatch, so the console only accepts query
 # forms. Anything that assigns a value is refused before it reaches the modem.
@@ -46,6 +55,12 @@ CONTENT_TYPES = {
 
 
 def load_config():
+    if not os.path.exists(CONFIG_PATH):
+        # First run in this directory: seed it from the bundled template
+        # rather than crashing, so `airtel-odu-app` works right after install.
+        shutil.copyfile(os.path.join(PKG_DIR, "config.example.json"), CONFIG_PATH)
+        print("No config.json in %s -- created one from the template." % DATA_DIR)
+        print("Edit it with your ODU/router host and password, then restart.")
     with open(CONFIG_PATH, encoding="utf-8") as handle:
         return json.load(handle)
 

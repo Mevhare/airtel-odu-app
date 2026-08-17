@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "airtel-odu-app"
+version = "0.1.0"
+description = "Local dashboard for an Airtel outdoor unit (ODU) and indoor CPE router -- signal, usage, devices, texts. No cloud, no account, no dependencies beyond Python."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [{ name = "Mevhare" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: System :: Networking :: Monitoring",
+]
+
+[project.urls]
+Homepage = "https://github.com/Mevhare/airtel-odu-app"
+Issues = "https://github.com/Mevhare/airtel-odu-app/issues"
+
+[project.scripts]
+airtel-odu-app = "airtel_odu_app.app:main"
+
+[tool.setuptools.packages.find]
+include = ["airtel_odu_app*"]
+
+[tool.setuptools.package-data]
+airtel_odu_app = ["web/*", "config.example.json"]
