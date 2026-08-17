@@ -75,9 +75,9 @@ combos will likely work too since they share the same underlying firmware.
 
 ## Safety
 
-The app is **read-only by default**. Turning on `safety.allow_writes` in
-`config.json` is what enables the network-mode switch, QoS, APN edits, and
-restart buttons — leave it off if you just want to watch, not touch anything.
+The network-mode switch, QoS, APN edits, and restart buttons are **on by
+default**. If you'd rather just watch and not touch anything, set
+`safety.allow_writes` to `false` in `config.json`.
 
 Every write that can drop your connection (mode switch, APN change) carries
 an automatic revert: if the link doesn't come back within a short window,

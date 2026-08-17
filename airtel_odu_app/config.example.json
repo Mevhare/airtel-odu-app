@@ -28,7 +28,7 @@
     "rsrp_warn_dbm": -100
   },
   "safety": {
-    "allow_writes": false,
+    "allow_writes": true,
     "band_switch_revert_seconds": 60
   }
 }
