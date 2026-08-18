@@ -9,22 +9,36 @@ Two families are supported and they share nothing but the interface:
            halves share one web interface at one address. One device, one login.
 
 ``device: "auto"`` in config.json probes for the ZLT interface first (it answers
-in milliseconds and cannot be mistaken for anything else) and falls back to the
-ZTE pair, which is what the addresses in a config file written before this
-existed will describe.
+in milliseconds and cannot be mistaken for anything else), then confirms ZTE
+the same way. If neither answers at all -- still booting, wrong address --
+the ZTE pair is assumed anyway, which is what a config file written before
+ZLT support existed always relied on. Only a host that positively answers
+HTTP but as neither protocol is called out as genuinely unsupported hardware;
+see :func:`build`.
 """
+
+import urllib.error
+import urllib.request
 
 from . import db
 from .odu import Odu
+from .odu import probe as _probe_zte
 from .router import Router
-from .zlt import ZltOdu, ZltRouter, ZltSession, probe
+from .zlt import ZltOdu, ZltRouter, ZltSession
+from .zlt import probe as _probe_zlt
 
 ZTE = "zte"
 ZLT = "zlt"
+UNSUPPORTED = "unsupported"
 
 
 def build(config):
-    """(odu, router, kind) for whatever this config points at."""
+    """(odu, router, kind) for whatever this config points at.
+
+    ``kind`` is ``UNSUPPORTED`` (with ``odu``/``router`` both ``None``) only
+    when a device answered HTTP but as neither protocol this app speaks --
+    a real third device, not a network hiccup.
+    """
     kind = (config.get("device") or "auto").strip().lower()
 
     if kind == ZTE:
@@ -35,10 +49,38 @@ def build(config):
         raise ValueError("device must be 'auto', 'zte' or 'zlt', not %r" % (kind,))
 
     for host in _candidates(config):
-        if probe(host):
+        if _probe_zlt(host):
             print("Found a ZLT-style device at %s." % host)
             return _zlt(config, host) + (ZLT,)
+
+    odu_host = (config.get("odu") or {}).get("host")
+    if odu_host:
+        if _probe_zte(odu_host):
+            return _zte(config) + (ZTE,)
+        if _reachable(odu_host):
+            print("A device answered at %s but not as ZTE or ZLT hardware." % odu_host)
+            return None, None, UNSUPPORTED
+
+    # Nothing conclusively identified itself either way -- assume the ZTE
+    # pair, same as before detection existed, rather than declaring hardware
+    # unsupported on what might just be a slow start.
     return _zte(config) + (ZTE,)
+
+
+def _reachable(host, timeout=3):
+    """Is anything speaking HTTP at this address at all?
+
+    Only used to tell "wrong protocol" (something answered, just not ZLT or
+    ZTE) apart from "nothing there yet" (still booting, offline, wrong LAN) --
+    the former is worth a real "not supported" message, the latter is not.
+    """
+    try:
+        urllib.request.urlopen("http://%s/" % host, timeout=timeout)
+    except urllib.error.HTTPError:
+        return True  # a server answered, even if with an error page
+    except (OSError, urllib.error.URLError):
+        return False
+    return True
 
 
 def _zte(config):
@@ -66,15 +108,19 @@ def _zlt(config, host):
 
 
 def _zlt_host(config):
-    return ((config.get("zlt") or {}).get("host")
-            or config["router"]["host"] or config["odu"]["host"])
+    return next(iter(_candidates(config)), None)
 
 
 def _candidates(config):
-    """Addresses to try, nearest guess first, without asking any of them twice."""
+    """Addresses to try, nearest guess first, without asking any of them twice.
+
+    ``router``/``odu`` blocks are optional here -- a single-device config as
+    documented in the README may carry only ``zlt.host``.
+    """
     seen = []
     for host in ((config.get("zlt") or {}).get("host"),
-                 config["router"]["host"], config["odu"]["host"]):
+                 (config.get("router") or {}).get("host"),
+                 (config.get("odu") or {}).get("host")):
         if host and host not in seen:
             seen.append(host)
     return seen

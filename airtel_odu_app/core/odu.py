@@ -465,6 +465,21 @@ class Odu:
         return self.call("zte_nwinfo_api", "nwinfo_end_detect_signal_quality")
 
 
+def probe(host, timeout=3):
+    """Is there a ZTE-style ubus interface at this address?
+
+    Cheap and unauthenticated, mirroring ``zlt.probe()``: the login-salt call
+    answers before any session exists and is specific to this firmware's
+    wrapper around ubus, unlike a bare ubus endpoint another device might also
+    expose.
+    """
+    try:
+        info = Odu(host, timeout=timeout)._anon_call("zwrt_web", "web_login_info")
+    except (OSError, ValueError, IndexError):
+        return False
+    return "zte_web_sault" in info
+
+
 # -- parsers ---------------------------------------------------------------
 
 def parse_carriers(netinfo):

@@ -1937,6 +1937,12 @@ function showLogin() {
   $('login-screen').hidden = false;
 }
 
+function showUnsupported() {
+  loggedIn = false;
+  document.body.classList.add('login-active');
+  $('unsupported-screen').hidden = false;
+}
+
 async function loadLiveHistory() {
   try {
     const hist = await getJson('/api/live/history');
@@ -1968,6 +1974,7 @@ function startApp() {
 async function boot() {
   try {
     const session = await getJson('/api/session');
+    if (session.device === 'unsupported') { showUnsupported(); return; }
     applyCapabilities(session.capabilities);
     applyLoginShape();
     if (session.authenticated) startApp();

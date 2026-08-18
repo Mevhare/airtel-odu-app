@@ -1211,7 +1211,8 @@ details.card[open] > summary {
 
 /* -- login screen ----------------------------------------------------------- */
 
-#login-screen {
+#login-screen,
+#unsupported-screen {
   position: fixed;
   inset: 0;
   z-index: 50;
@@ -1221,7 +1222,8 @@ details.card[open] > summary {
   background: var(--bg);
   padding: 20px;
 }
-#login-screen[hidden] {
+#login-screen[hidden],
+#unsupported-screen[hidden] {
   display: none;
 }
 .login-card {

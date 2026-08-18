@@ -217,34 +217,40 @@ class ZltSession:
         indefinitely, but opening the unit's own web page in a browser will log
         this app out, and vice versa. Nothing breaks either way -- every call
         re-authenticates when it finds itself locked out.
+
+        Held under the same lock ``call``/``_call`` use, since two logins
+        racing is exactly what would have the firmware invalidate one session
+        with the other -- this is reentrant, so ``_call``'s own internal
+        re-login (already inside the lock) is unaffected.
         """
-        self.session_id = ""
-        try:
-            self.rpc(CMD_PRELOGIN)          # the stock UI's own warm-up call
-        except (OSError, ZltError):
-            pass
+        with self._lock:
+            self.session_id = ""
+            try:
+                self.rpc(CMD_PRELOGIN)          # the stock UI's own warm-up call
+            except (OSError, ZltError):
+                pass
 
-        token = (self.rpc(CMD_LOGIN_TOKEN) or {}).get("token")
-        if not token:
-            raise ZltError("the device would not issue a login token")
+            token = (self.rpc(CMD_LOGIN_TOKEN) or {}).get("token")
+            if not token:
+                raise ZltError("the device would not issue a login token")
 
-        # The stock UI makes up the session id itself and the firmware honours
-        # it until it answers with one of its own.
-        self.session_id = _random_hex()
-        out = self.rpc(
-            CMD_LOGIN, "POST",
-            username=self.username,
-            passwd=hashlib.sha256((token + self.password).encode()).hexdigest(),
-            token=token,
-        )
+            # The stock UI makes up the session id itself and the firmware
+            # honours it until it answers with one of its own.
+            self.session_id = _random_hex()
+            out = self.rpc(
+                CMD_LOGIN, "POST",
+                username=self.username,
+                passwd=hashlib.sha256((token + self.password).encode()).hexdigest(),
+                token=token,
+            )
 
-        if out.get("sessionId"):
-            self.session_id = out["sessionId"]
-            self._config = None
-            return self.session_id
+            if out.get("sessionId"):
+                self.session_id = out["sessionId"]
+                self._config = None
+                return self.session_id
 
-        self.session_id = ""
-        raise ZltError(_login_failure(out))
+            self.session_id = ""
+            raise ZltError(_login_failure(out))
 
     def logged_in(self):
         return bool(self.session_id)
@@ -617,17 +623,26 @@ class ZltOdu:
         """Point the modem at an access point, editing a profile if need be.
 
         The firmware takes the whole profile list back in one write, with the
-        one to dial flagged. An existing entry for the same APN is reused, so
-        repeated saves do not fill the (four-slot) editable list.
+        one to dial flagged. ``profile_id`` is the profile that was active
+        before this change (its ``name`` -- see ``_profile()``) and is checked
+        first, so editing a profile to a new APN string updates it in place
+        rather than leaving the old entry behind and appending a second one
+        under the same name. Failing that, an entry already carrying the
+        wanted APN is reused, so repeated saves of the same value do not fill
+        the (four-slot) editable list either.
         """
         profiles = (self.link.get(CMD_APN_LIST) or {}).get("apn_list") or []
         wanted = apn.strip()
 
         target = None
+        if profile_id:
+            target = next((p for p in profiles if (p.get("name") or "") == profile_id),
+                          None)
+        if target is None:
+            target = next((p for p in profiles if (p.get("apnName") or "").strip().lower()
+                           == wanted.lower()), None)
         for profile in profiles:
             profile["default_flag"] = "0"
-            if (profile.get("apnName") or "").strip().lower() == wanted.lower():
-                target = profile
 
         if target is None:
             editable = [p for p in profiles if str(p.get("edit_flag")) == "1"]
@@ -635,7 +650,7 @@ class ZltOdu:
                 raise ZltError(
                     "the unit holds at most four editable APN profiles and all "
                     "four are in use -- remove one on its own web page first")
-            target = {"name": (profile_id or wanted)[:63], "edit_flag": "1"}
+            target = {"name": wanted[:63], "edit_flag": "1"}
             profiles.append(target)
 
         target.update({
@@ -895,6 +910,15 @@ def goals_for(modes):
             if mode in modes:
                 goals[goal] = mode
                 break
+    if len(goals) < len(MODE_GOALS):
+        # A narrow bitmask (legacy 2G/3G-only units) can leave every goal here
+        # unmatched -- the frontend still needs something to steer to, or it
+        # posts an unmapped mode and gets a confusing rejection back. Fall back
+        # to whatever got picked for another goal, or failing that the first
+        # mode the unit actually advertises.
+        fallback = next(iter(goals.values()), None) or next(iter(sorted(modes)), None)
+        for goal in MODE_GOALS:
+            goals.setdefault(goal, fallback)
     return goals
 
 
@@ -949,7 +973,10 @@ def _sms_record(blob, offset):
     except ValueError:
         return None
     return {
-        "id": index,
+        # Numeric, to match the ZTE client and the collector's numeric
+        # "is this message new" comparison -- left as a string here, "10"
+        # sorts before "9" and new-message detection misfires past 9 messages.
+        "id": _int(index) if _int(index) is not None else index,
         "number": sender,
         "content": " ".join(parts[5:]),
         # core.sms wants two-digit years and the offset in quarter hours.

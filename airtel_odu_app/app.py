@@ -21,7 +21,7 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from .core import db, sms
+from .core import db, hardware, sms
 from .core.collector import Collector
 from .core.errors import DeviceError
 from .core.odu import QOS_PRIORITIES, optimise_mode_from_qos
@@ -174,6 +174,14 @@ class Handler(BaseHTTPRequestHandler):
             # The device description rides along unauthenticated: the login
             # screen needs it to know whether to ask for one password or two,
             # and it says nothing a stranger on the LAN could not see anyway.
+            if collector.device_kind == hardware.UNSUPPORTED:
+                # No client was built at all -- see hardware.build() -- so
+                # there is nothing to ask for capabilities.
+                return self._send(200, {
+                    "authenticated": False,
+                    "device": collector.device_kind,
+                    "capabilities": {},
+                })
             return self._send(200, {
                 "authenticated": self._authenticated(),
                 "device": collector.device_kind,
@@ -455,6 +463,10 @@ class Handler(BaseHTTPRequestHandler):
         background threads use -- never a second, competing client -- so this
         never risks tripping the ODU's login rate limiter on its own account.
         """
+        if collector.device_kind == hardware.UNSUPPORTED:
+            return self._send(409, {
+                "error": "no supported hardware was found on your network"})
+
         odu_password = (payload.get("odu_password") or "").strip()
         # A unit that is its own router has one password and one session, so
         # the second field is neither asked for nor used.
@@ -488,7 +500,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(401, {"error": str(exc), "field": "router"})
 
         config["odu"]["password"] = odu_password
-        config["router"]["password"] = router_password
+        # Single-device hardware's config may carry no separate "router" block
+        # at all (see core/hardware.py) -- nothing to write back to in that case.
+        if "router" in config:
+            config["router"]["password"] = router_password
         token = (config.get("auth") or {}).get("session_token") or secrets.token_hex(32)
         config["auth"] = {"session_token": token}
         save_config(config)
@@ -746,8 +761,8 @@ class Handler(BaseHTTPRequestHandler):
             gateway = snapshot["odu"]["wan"].get("mwan_wanlan1_wan_gateway")
 
         hops = [
-            ("Indoor router", config["router"]["host"]),
-            ("Outdoor unit", config["odu"]["host"]),
+            ("Indoor router", (config.get("router") or {}).get("host")),
+            ("Outdoor unit", (config.get("odu") or {}).get("host")),
             ("Airtel gateway", gateway),
         ]
         results = [{"label": label, "host": host, "ms": _ping(host)}

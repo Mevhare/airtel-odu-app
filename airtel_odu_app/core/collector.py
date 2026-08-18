@@ -61,6 +61,12 @@ class Collector:
         self._sms_top_id = None
 
     def start(self):
+        if self.device_kind == hardware.UNSUPPORTED:
+            # Nothing answered as either supported protocol -- there is
+            # nothing here to poll, and doing so would just spend every tick
+            # failing against clients that were never built (odu/router are
+            # both None; see hardware.build()).
+            return []
         threads = [
             threading.Thread(target=self._loop, daemon=True, name="collector"),
             threading.Thread(target=self._live_loop, daemon=True, name="collector-live"),
