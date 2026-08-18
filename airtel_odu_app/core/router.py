@@ -17,6 +17,9 @@ import json
 import urllib.parse
 import urllib.request
 
+from .errors import DeviceError
+from .odu import CAPABILITIES
+
 # The per-device byte counters are signed 32-bit. Two things happen at the top
 # of that range and they have to be told apart:
 #
@@ -32,11 +35,13 @@ INT32_MIN = -(1 << 31)
 INT32_MAX = (1 << 31) - 1
 
 
-class RouterError(Exception):
+class RouterError(DeviceError):
     pass
 
 
 class Router:
+    capabilities = CAPABILITIES
+
     def __init__(self, host, password="admin", timeout=10):
         self.host = host
         self.password = password
@@ -212,6 +217,9 @@ class Router:
             "modem_main_state", "signalbar", "network_type", "network_provider",
             "opms_wan_mode", "opms_wan_auto_mode", "ppp_status",
         ])
+
+    def reboot(self):
+        return self.post({"goformId": "REBOOT_DEVICE"})
 
 
 def _to_int(value):

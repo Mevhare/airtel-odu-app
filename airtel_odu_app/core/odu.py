@@ -18,6 +18,8 @@ import time
 import urllib.error
 import urllib.request
 
+from .errors import DeviceError
+
 NULL_SESSION = "0" * 32
 
 OK = 0
@@ -49,6 +51,28 @@ QOS_WEB = 2
 QOS_VIDEO = 3
 QOS_PRIORITIES = {QOS_AUTOMATIC, QOS_GAME, QOS_WEB, QOS_VIDEO}
 
+# Which mode the dashboard's Optimise picker should reach for, per goal. The ZLT
+# client publishes the same map with its own mode names -- see ``zlt.MODE_GOALS``.
+MODE_GOALS = {
+    "default": "WL_AND_5G",
+    "game": "Only_LTE",
+    "performance": "LTE_AND_5G",
+    "performance_fallback": "Only_LTE",
+}
+
+# Everything this hardware supports; the ZLT units support less, so the
+# dashboard asks rather than assumes.
+CAPABILITIES = {
+    "network_mode": True,
+    "apn": True,
+    "sms": True,
+    "qos": True,
+    "at": True,
+    "auto_reset": True,
+    "per_device_bytes": True,
+    "single_device": False,
+}
+
 
 def optimise_mode_from_qos(qos):
     """Map a router_get_qos reading back to the Settings tab's picker labels."""
@@ -68,11 +92,15 @@ def optimise_mode_from_qos(qos):
     return "default"
 
 
-class OduError(Exception):
+class OduError(DeviceError):
     pass
 
 
 class Odu:
+    capabilities = CAPABILITIES
+    net_modes = NET_MODES
+    mode_goals = MODE_GOALS
+
     def __init__(self, host, username="admin", password="admin", timeout=10,
                  scheme=None, on_scheme=None):
         self.host = host
@@ -246,6 +274,14 @@ class Odu:
         """Radio state: bands, per-carrier signal, cell identity, operator."""
         return self.call("zte_nwinfo_api", "nwinfo_get_netinfo")
 
+    def carriers(self, netinfo):
+        """Per-carrier signal, unpacked from the reading above.
+
+        A method rather than a bare call to :func:`parse_carriers` so the
+        collector can ask any supported device the same question.
+        """
+        return parse_carriers(netinfo)
+
     def usage(self, kind):
         """Traffic counters. kind is 'session', 'month' or 'total'."""
         type_id = {"session": 1, "month": 2, "total": 3}[kind]
@@ -416,6 +452,9 @@ class Odu:
     def sms_delete(self, message_id):
         return self.call("zwrt_wms", "zwrt_wms_delete_sms", {"id": str(message_id)})
 
+    def reboot(self):
+        return self.call("system", "reboot")
+
     def start_signal_survey(self):
         return self.call("zte_nwinfo_api", "nwinfo_start_detect_signal_quality")
 
@@ -424,6 +463,21 @@ class Odu:
 
     def end_signal_survey(self):
         return self.call("zte_nwinfo_api", "nwinfo_end_detect_signal_quality")
+
+
+def probe(host, timeout=3):
+    """Is there a ZTE-style ubus interface at this address?
+
+    Cheap and unauthenticated, mirroring ``zlt.probe()``: the login-salt call
+    answers before any session exists and is specific to this firmware's
+    wrapper around ubus, unlike a bare ubus endpoint another device might also
+    expose.
+    """
+    try:
+        info = Odu(host, timeout=timeout)._anon_call("zwrt_web", "web_login_info")
+    except (OSError, ValueError, IndexError):
+        return False
+    return "zte_web_sault" in info
 
 
 # -- parsers ---------------------------------------------------------------

@@ -1,26 +1,38 @@
-"""One-off: switch the ODU radio mode, and put it back if the link does not return."""
+"""One-off: switch the radio mode, and put it back if the link does not return.
+
+Works against either supported family -- the mode names differ, so run it with
+no argument to see the ones this unit accepts.
+"""
 
 import json
 import sys
 import time
 
-from airtel_odu_app.core import db
-from airtel_odu_app.core.odu import NET_MODES, Odu
+from airtel_odu_app.core import db, hardware
 
-TARGET = sys.argv[1] if len(sys.argv) > 1 else "LTE_AND_5G"
 GRACE = 90
 
 config = json.load(open("config.json", encoding="utf-8"))
 db.init()
-odu = Odu(**config["odu"],
-          scheme=db.get_setting("odu_login_scheme"),
-          on_scheme=lambda name: db.set_setting("odu_login_scheme", name))
+odu, _, kind = hardware.build(config)
 odu.login()
 
+modes = odu.net_modes
 before = odu.netinfo()
 previous = before.get("net_select")
-print("current mode : %s (%s)" % (previous, NET_MODES.get(previous, "?")))
-print("target mode  : %s (%s)" % (TARGET, NET_MODES.get(TARGET, "?")))
+
+if len(sys.argv) < 2:
+    print("usage: python switch_mode.py <mode>\n\nmodes this %s unit accepts:" % kind)
+    for mode, label in modes.items():
+        print("  %-14s %s%s" % (mode, label, "   <- in use" if mode == previous else ""))
+    raise SystemExit(1)
+
+TARGET = sys.argv[1]
+if TARGET not in modes:
+    raise SystemExit("unknown mode %r -- run with no argument to list them" % TARGET)
+
+print("current mode : %s (%s)" % (previous, modes.get(previous, "?")))
+print("target mode  : %s (%s)" % (TARGET, modes.get(TARGET, "?")))
 print("network type : %s" % before.get("network_type"))
 
 odu.set_network_mode(TARGET)
