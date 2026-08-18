@@ -105,6 +105,19 @@ Any change that could drop your connection (mode switch, APN change) reverts
 itself automatically if the connection doesn't come back within a few
 seconds.
 
+## Releasing (maintainers)
+
+Publishing to PyPI happens automatically: bump `version` in `pyproject.toml`,
+then create a [GitHub Release](https://github.com/Mevhare/airtel-odu-app/releases/new)
+for that version (tag it `vX.Y.Z`) and the
+[publish workflow](.github/workflows/publish.yml) builds and uploads it.
+
+That workflow uses PyPI's [Trusted Publishing](https://docs.pypi.org/trusted-publishers/),
+so no API token lives in this repo. One-time setup on PyPI (needs a PyPI
+account, done once by whoever owns the `airtel-odu-app` name there): add a
+pending publisher pointing at this repo, workflow file `publish.yml`, and
+environment `pypi`.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
