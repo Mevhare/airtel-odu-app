@@ -40,11 +40,17 @@ import urllib.request
 from .errors import DeviceError
 
 # -- the firmware's endpoints, by the name its own web app gives them --------
+#
+# Every one of these is a fixed endpoint id baked into the firmware and shipped
+# in its own web app's JavaScript -- an address, the same on every unit, not a
+# credential. The two named ``..._TOKEN`` are the endpoints that *issue* tokens;
+# the tokens themselves are minted per login and per write and never appear
+# here. Secret scanners read "TOKEN = <uuid>" and flag it, hence the markers.
 
-CMD_LOGIN_TOKEN = "3830c61a-620d-47da-ae47-33d8401401c4"
+CMD_LOGIN_TOKEN = "3830c61a-620d-47da-ae47-33d8401401c4"  # ggignore
 CMD_LOGIN = "d2aa9843-494b-4947-9621-a46ec652ecd9"
 CMD_LOGOUT = "677d89ca-2e5c-4481-81e3-cb6965ae77da"
-CMD_WRITE_TOKEN = "f3b70f2f-8721-48c4-87ec-22d8c92dd3c9"
+CMD_WRITE_TOKEN = "f3b70f2f-8721-48c4-87ec-22d8c92dd3c9"  # ggignore
 CMD_PRELOGIN = "835e31b3-a45a-4504-80df-586bf8a509aa"
 
 CMD_CONFIG = "55f29f9b-20cd-4d72-ab20-63ba0b4d2a7a"
