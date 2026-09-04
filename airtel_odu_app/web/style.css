@@ -150,6 +150,9 @@ button {
   margin-top: 12px;
   margin-bottom: 12px;
 }
+.actions[hidden] {
+  display: none;
+}
 
 /* -- hero ----------------------------------------------------------------- */
 
