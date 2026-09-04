@@ -13,7 +13,7 @@ from collections import deque
 
 from . import db, hardware, sms
 from .errors import DeviceError
-from .odu import signal_grade
+from .odu import _to_float, signal_grade
 
 
 class Collector:
@@ -233,13 +233,25 @@ class Collector:
             pass
 
         connected = str(wan.get("current_wan_status", "")).startswith("ipv4_connected")
+        # ltecasig (the per-carrier string parse_carriers reads rsrp/rsrq/sinr
+        # from) is sometimes blank even though the modem's own top-level
+        # lte_rsrp/lte_rsrq/lte_snr fields are populated -- fall back to those,
+        # same as the dashboard's own Signal readout already does.
         rsrp = primary.get("rsrp")
+        if rsrp is None:
+            rsrp = _to_float(netinfo.get("lte_rsrp"))
+        rsrq = primary.get("rsrq")
+        if rsrq is None:
+            rsrq = _to_float(netinfo.get("lte_rsrq"))
+        sinr = primary.get("sinr")
+        if sinr is None:
+            sinr = _to_float(netinfo.get("lte_snr"))
 
         db.record_signal({
             "ts": now,
             "rsrp": rsrp,
-            "rsrq": primary.get("rsrq"),
-            "sinr": primary.get("sinr"),
+            "rsrq": rsrq,
+            "sinr": sinr,
             "band": netinfo.get("wan_active_band"),
             "cell_id": _int(netinfo.get("cell_id")),
             "pci": _int(netinfo.get("lte_pci")),
