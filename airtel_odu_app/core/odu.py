@@ -453,7 +453,10 @@ class Odu:
         return self.call("zwrt_wms", "zwrt_wms_delete_sms", {"id": str(message_id)})
 
     def reboot(self):
-        return self.call("system", "reboot")
+        # The raw OpenWrt "system" object isn't in this session's ubus ACL --
+        # confirmed via the ODU's own web UI, which reboots through its own
+        # device-manager wrapper instead.
+        return self.call("zwrt_mc.device.manager", "device_reboot", {"moduleName": "web"})
 
     def start_signal_survey(self):
         return self.call("zte_nwinfo_api", "nwinfo_start_detect_signal_quality")
