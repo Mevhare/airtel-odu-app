@@ -18,19 +18,19 @@
     <div class="form-stack">
       <div class="password-field">
         <input class="select" id="login-odu-password" type="password"
-               placeholder="Outdoor unit password" autocomplete="current-password">
+               placeholder="Outdoor unit password (192.168.254.1)" autocomplete="current-password">
         <button class="password-toggle" type="button" aria-pressed="false"
                 aria-label="Show password"><svg class="eye-show" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3.2"/></svg><svg class="eye-hide" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5c1.6 0 3 .45 4.2 1.1M21.5 12s-1.5 2.8-4.3 4.4M9.9 9.9a3.2 3.2 0 0 0 4.3 4.5M4 4l16 16"/></svg></button>
       </div>
-      <div id="login-router-row" hidden>
+      <div id="login-router-row">
         <div class="password-field">
           <input class="select" id="login-router-password" type="password"
-                 placeholder="Router password" autocomplete="current-password">
+                 placeholder="Indoor router password (192.168.18.1)" autocomplete="current-password">
           <button class="password-toggle" type="button" aria-pressed="false"
                   aria-label="Show password"><svg class="eye-show" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3.2"/></svg><svg class="eye-hide" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5c1.6 0 3 .45 4.2 1.1M21.5 12s-1.5 2.8-4.3 4.4M9.9 9.9a3.2 3.2 0 0 0 4.3 4.5M4 4l16 16"/></svg></button>
         </div>
       </div>
-      <label class="login-check" id="login-same-row"><input type="checkbox" id="login-same" checked> Same password for both</label>
+      <label class="login-check" id="login-same-row"><input type="checkbox" id="login-same"> Same password for both</label>
       <button class="btn" type="submit">Log in</button>
       <p class="foot" id="login-error"></p>
     </div>

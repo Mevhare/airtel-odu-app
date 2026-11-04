@@ -14,6 +14,8 @@ fetched in one round trip.
 
 import hashlib
 import json
+import threading
+import time
 import urllib.parse
 import urllib.request
 
@@ -44,12 +46,25 @@ class Router:
 
     def __init__(self, host, password="admin", timeout=10):
         self.host = host
-        self.password = password
+        self._password = password
+        self._rejected_password = None
         self.timeout = timeout
         self.opener = urllib.request.build_opener(
             urllib.request.HTTPCookieProcessor()
         )
         self.logged_in = False
+        self._locked_until = 0.0
+        self._lock = threading.RLock()
+
+    @property
+    def password(self):
+        return self._password
+
+    @password.setter
+    def password(self, value):
+        if value != self._password:
+            self._rejected_password = None
+        self._password = value
 
     # -- transport ---------------------------------------------------------
 
@@ -109,33 +124,82 @@ class Router:
         Which one applies varies by build, so each candidate is attempted and the
         first that reports success wins. The session then lives in the cookie jar.
         """
-        salt = (self.get("LD") or {}).get("LD", "")
-        upper_sha = lambda text: hashlib.sha256(text.encode()).hexdigest().upper()
+        with self._lock:
+            waiting = self._locked_until - time.time()
+            if waiting > 0:
+                raise RouterError(
+                    "router is rate-limiting logins for another %d seconds"
+                    % round(waiting)
+                )
 
-        candidates = []
-        if salt:
-            candidates.append(upper_sha(upper_sha(self.password) + salt.upper()))
-        candidates.append(upper_sha(self.password))
-        candidates.append(
-            urllib.parse.quote(self.password.encode("utf-8"))
-        )
+            info = self.get(["LD", "login_lock_time", "psw_fail_num_str"]) or {}
+            salt = info.get("LD", "") or ""
+            locked = info.get("login_lock_time")
+            try:
+                if locked and int(locked) > 0:
+                    self._locked_until = time.time() + int(locked)
+                    raise RouterError(
+                        "router is rate-limiting logins for another %s seconds"
+                        % locked
+                    )
+            except (TypeError, ValueError):
+                pass
 
-        for candidate in candidates:
-            self.post({
-                "isTest": "false",
-                "goformId": "LOGIN",
-                "password": candidate,
-            })
-            # The result code is not a reliable signal on this firmware, so
-            # confirm by reading a value that only answers when authenticated.
-            if self._authenticated():
-                self.logged_in = True
-                return True
+            upper_sha = lambda text: hashlib.sha256(text.encode()).hexdigest().upper()
 
-        raise RouterError(
-            "router login rejected for every known hash scheme -- check the "
-            "password in config.json"
-        )
+            if salt:
+                # When LD is served, this firmware uses SHA256(SHA256(password)+LD)
+                # exclusively -- do not cycle through fallback candidates on a single
+                # login attempt and burn multiple lockout slots.
+                candidates = [upper_sha(upper_sha(self.password) + salt.upper())]
+            else:
+                candidates = [
+                    upper_sha(self.password),
+                    urllib.parse.quote(self.password.encode("utf-8")),
+                ]
+
+            for candidate in candidates:
+                out = self.post({
+                    "isTest": "false",
+                    "goformId": "LOGIN",
+                    "password": candidate,
+                })
+                result = str((out or {}).get("result", ""))
+                if result == "2":
+                    raise RouterError(
+                        "Someone else is already signed in to the indoor router at "
+                        "%s — log out of its own web page first, or wait for that "
+                        "session to expire." % self.host
+                    )
+                # The result code is not always a reliable signal on this firmware,
+                # so confirm by reading a value that only answers when authenticated.
+                if result in ("0", "4") or self._authenticated():
+                    self.logged_in = True
+                    self._rejected_password = None
+                    return True
+
+            self._rejected_password = self.password
+            after = self.get(["login_lock_time", "psw_fail_num_str"]) or {}
+            after_locked = after.get("login_lock_time")
+            try:
+                if after_locked and int(after_locked) > 0:
+                    self._locked_until = time.time() + int(after_locked)
+                    raise RouterError(
+                        "Too many failed logins; router is rate-limiting logins "
+                        "for another %s seconds." % after_locked
+                    )
+            except (TypeError, ValueError):
+                pass
+            remaining = after.get("psw_fail_num_str")
+            if remaining is not None and str(remaining) != "":
+                raise RouterError(
+                    "router login rejected — check the indoor router password "
+                    "(%s attempt%s left before lockout)."
+                    % (remaining, "" if str(remaining) == "1" else "s")
+                )
+            raise RouterError(
+                "router login rejected -- check the password in config.json"
+            )
 
     def _authenticated(self):
         """Probe a command that is genuinely session-gated.
@@ -155,10 +219,17 @@ class Router:
         There is no session endpoint, so this probes a command that stays blank
         until authenticated.
         """
-        if self._authenticated():
-            self.logged_in = True
-            return
-        self.login()
+        with self._lock:
+            if self._authenticated():
+                self.logged_in = True
+                return
+            if (self._rejected_password is not None
+                    and self.password == self._rejected_password):
+                raise RouterError(
+                    "router login rejected — sign in on the dashboard with the "
+                    "indoor router password."
+                )
+            self.login()
 
     # -- telemetry ---------------------------------------------------------
 
@@ -168,13 +239,20 @@ class Router:
         Note the direction of the counters is from the *router's* point of view:
         ``tx_*`` is router-to-device, i.e. what the device downloaded.
         """
-        raw = self.get("station_list").get("station_list")
-        if not isinstance(raw, list):
-            # Session has lapsed (the firmware answers with an empty string).
-            self.login()
+        with self._lock:
             raw = self.get("station_list").get("station_list")
-        if not isinstance(raw, list):
-            return []
+            if not isinstance(raw, list):
+                # Session has lapsed (the firmware answers with an empty string).
+                if (self._rejected_password is not None
+                        and self.password == self._rejected_password):
+                    raise RouterError(
+                        "router login rejected — sign in on the dashboard with "
+                        "the indoor router password."
+                    )
+                self.login()
+                raw = self.get("station_list").get("station_list")
+            if not isinstance(raw, list):
+                return []
 
         devices = []
         for entry in raw:

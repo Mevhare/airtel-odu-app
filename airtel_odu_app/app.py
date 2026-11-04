@@ -507,6 +507,7 @@ class Handler(BaseHTTPRequestHandler):
         token = (config.get("auth") or {}).get("session_token") or secrets.token_hex(32)
         config["auth"] = {"session_token": token}
         save_config(config)
+        collector.poll_now()
         db.log_event("login", "Signed in to the dashboard")
 
         body = json.dumps({"ok": True}).encode()
