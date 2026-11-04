@@ -1,23 +1,180 @@
-/* Dark, quiet, one-column. Big numbers, small labels, everything advanced
+/* Quiet, one-column. Big numbers, small labels, everything advanced
    folded away until asked for. */
 
 :root {
-  --bg: #000;
-  --surface: #101114;
-  --surface-2: #17191e;
-  --line: rgba(255, 255, 255, 0.09);
-  --text: #fff;
-  --muted: rgba(255, 255, 255, 0.48);
-  --faint: rgba(255, 255, 255, 0.3);
-  --accent: #3b82f6;
-  --good: #34c759;
-  --warn: #ffb02e;
-  --bad: #ff453a;
+  color-scheme: light dark;
+
+  --bg-light: #f5f6f8;
+  --bg-dark: #000;
+  --surface-light: #ffffff;
+  --surface-dark: #101114;
+  --surface-2-light: #eef0f4;
+  --surface-2-dark: #17191e;
+  --line-light: rgba(17, 19, 24, 0.1);
+  --line-dark: rgba(255, 255, 255, 0.09);
+  --line-strong-light: rgba(17, 19, 24, 0.22);
+  --line-strong-dark: rgba(255, 255, 255, 0.25);
+  --text-light: #111318;
+  --text-dark: #fff;
+  --muted-light: #525866;
+  --muted-dark: rgba(255, 255, 255, 0.48);
+  --faint-light: #687082;
+  --faint-dark: rgba(255, 255, 255, 0.3);
+  --accent-light: #2563eb;
+  --accent-dark: #3b82f6;
+  --good-light: #15803d;
+  --good-dark: #34c759;
+  --warn-light: #b45309;
+  --warn-dark: #ffb02e;
+  --bad-light: #dc2626;
+  --bad-dark: #ff453a;
+  --btn-active-light: #dfe3ea;
+  --btn-active-dark: #23262c;
+  --seg-active-light: #ffffff;
+  --seg-active-dark: #2a2e35;
+  --tip-bg-light: rgba(255, 255, 255, 0.96);
+  --tip-bg-dark: rgba(22, 24, 28, 0.96);
+  --tabs-bg-light: rgba(245, 246, 248, 0.88);
+  --tabs-bg-dark: rgba(10, 10, 12, 0.82);
+  --sms-body-light: #262930;
+  --sms-body-dark: rgba(255, 255, 255, 0.8);
+  --banner-text-light: #991b1b;
+  --banner-text-dark: #ffb4af;
+  --sticky-shadow-light: rgba(17, 19, 24, 0.08);
+  --sticky-shadow-dark: rgba(0, 0, 0, 0.3);
+  --swatch-up-light: rgba(17, 19, 24, 0.45);
+  --swatch-up-dark: rgba(255, 255, 255, 0.5);
+  --select-chevron-light: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='rgba(17,19,24,.55)' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --select-chevron-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='rgba(255,255,255,.48)' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+
+  /* Fallback for browsers without light-dark() support */
+  --bg: var(--bg-light);
+  --surface: var(--surface-light);
+  --surface-2: var(--surface-2-light);
+  --line: var(--line-light);
+  --line-strong: var(--line-strong-light);
+  --text: var(--text-light);
+  --muted: var(--muted-light);
+  --faint: var(--faint-light);
+  --accent: var(--accent-light);
+  --good: var(--good-light);
+  --warn: var(--warn-light);
+  --bad: var(--bad-light);
+  --btn-active: var(--btn-active-light);
+  --seg-active: var(--seg-active-light);
+  --tip-bg: var(--tip-bg-light);
+  --tabs-bg: var(--tabs-bg-light);
+  --sms-body: var(--sms-body-light);
+  --banner-text: var(--banner-text-light);
+  --sticky-shadow: var(--sticky-shadow-light);
+  --swatch-up: var(--swatch-up-light);
+  --select-chevron: var(--select-chevron-light);
+
   --radius: 18px;
   /* Width of the desktop nav rail. One number, because the rail's own width
      and the padding that keeps main clear of it have to agree. */
   --rail: 184px;
-  color-scheme: dark;
+
+  &:has(> head > meta[name="color-scheme"][content="dark"]) {
+    color-scheme: dark;
+    --bg: var(--bg-dark);
+    --surface: var(--surface-dark);
+    --surface-2: var(--surface-2-dark);
+    --line: var(--line-dark);
+    --line-strong: var(--line-strong-dark);
+    --text: var(--text-dark);
+    --muted: var(--muted-dark);
+    --faint: var(--faint-dark);
+    --accent: var(--accent-dark);
+    --good: var(--good-dark);
+    --warn: var(--warn-dark);
+    --bad: var(--bad-dark);
+    --btn-active: var(--btn-active-dark);
+    --seg-active: var(--seg-active-dark);
+    --tip-bg: var(--tip-bg-dark);
+    --tabs-bg: var(--tabs-bg-dark);
+    --sms-body: var(--sms-body-dark);
+    --banner-text: var(--banner-text-dark);
+    --sticky-shadow: var(--sticky-shadow-dark);
+    --swatch-up: var(--swatch-up-dark);
+    --select-chevron: var(--select-chevron-dark);
+  }
+
+  &:has(> head > meta[name="color-scheme"][content="light"]) {
+    color-scheme: light;
+    --bg: var(--bg-light);
+    --surface: var(--surface-light);
+    --surface-2: var(--surface-2-light);
+    --line: var(--line-light);
+    --line-strong: var(--line-strong-light);
+    --text: var(--text-light);
+    --muted: var(--muted-light);
+    --faint: var(--faint-light);
+    --accent: var(--accent-light);
+    --good: var(--good-light);
+    --warn: var(--warn-light);
+    --bad: var(--bad-light);
+    --btn-active: var(--btn-active-light);
+    --seg-active: var(--seg-active-light);
+    --tip-bg: var(--tip-bg-light);
+    --tabs-bg: var(--tabs-bg-light);
+    --sms-body: var(--sms-body-light);
+    --banner-text: var(--banner-text-light);
+    --sticky-shadow: var(--sticky-shadow-light);
+    --swatch-up: var(--swatch-up-light);
+    --select-chevron: var(--select-chevron-light);
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(:has(> head > meta[name="color-scheme"][content="light"])) {
+    --bg: var(--bg-dark);
+    --surface: var(--surface-dark);
+    --surface-2: var(--surface-2-dark);
+    --line: var(--line-dark);
+    --line-strong: var(--line-strong-dark);
+    --text: var(--text-dark);
+    --muted: var(--muted-dark);
+    --faint: var(--faint-dark);
+    --accent: var(--accent-dark);
+    --good: var(--good-dark);
+    --warn: var(--warn-dark);
+    --bad: var(--bad-dark);
+    --btn-active: var(--btn-active-dark);
+    --seg-active: var(--seg-active-dark);
+    --tip-bg: var(--tip-bg-dark);
+    --tabs-bg: var(--tabs-bg-dark);
+    --sms-body: var(--sms-body-dark);
+    --banner-text: var(--banner-text-dark);
+    --sticky-shadow: var(--sticky-shadow-dark);
+    --swatch-up: var(--swatch-up-dark);
+    --select-chevron: var(--select-chevron-dark);
+  }
+}
+
+@supports (color: light-dark(white, black)) {
+  :root {
+    --bg: light-dark(var(--bg-light), var(--bg-dark));
+    --surface: light-dark(var(--surface-light), var(--surface-dark));
+    --surface-2: light-dark(var(--surface-2-light), var(--surface-2-dark));
+    --line: light-dark(var(--line-light), var(--line-dark));
+    --line-strong: light-dark(var(--line-strong-light), var(--line-strong-dark));
+    --text: light-dark(var(--text-light), var(--text-dark));
+    --muted: light-dark(var(--muted-light), var(--muted-dark));
+    --faint: light-dark(var(--faint-light), var(--faint-dark));
+    --accent: light-dark(var(--accent-light), var(--accent-dark));
+    --good: light-dark(var(--good-light), var(--good-dark));
+    --warn: light-dark(var(--warn-light), var(--warn-dark));
+    --bad: light-dark(var(--bad-light), var(--bad-dark));
+    --btn-active: light-dark(var(--btn-active-light), var(--btn-active-dark));
+    --seg-active: light-dark(var(--seg-active-light), var(--seg-active-dark));
+    --tip-bg: light-dark(var(--tip-bg-light), var(--tip-bg-dark));
+    --tabs-bg: light-dark(var(--tabs-bg-light), var(--tabs-bg-dark));
+    --sms-body: light-dark(var(--sms-body-light), var(--sms-body-dark));
+    --banner-text: light-dark(var(--banner-text-light), var(--banner-text-dark));
+    --sticky-shadow: light-dark(var(--sticky-shadow-light), var(--sticky-shadow-dark));
+    --swatch-up: light-dark(var(--swatch-up-light), var(--swatch-up-dark));
+  }
 }
 
 * {
@@ -132,7 +289,7 @@ button {
   font-size: 14px;
 }
 .btn:active {
-  background: #23262c;
+  background: var(--btn-active);
 }
 .btn:disabled {
   opacity: 0.45;
@@ -227,7 +384,7 @@ button {
 }
 .pill.tech {
   color: var(--text);
-  border-color: rgba(255, 255, 255, 0.25);
+  border-color: var(--line-strong);
 }
 
 .pill-icon {
@@ -432,8 +589,8 @@ button {
   position: sticky;
   left: 0;
   background: var(--surface);
-  border-right-color: rgba(255, 255, 255, 0.2);
-  box-shadow: 2px 0 6px rgba(0, 0, 0, 0.3);
+  border-right-color: var(--line-strong);
+  box-shadow: 2px 0 6px var(--sticky-shadow);
 }
 .dev-table thead th:first-child {
   z-index: 1;
@@ -466,7 +623,7 @@ button {
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid var(--line);
-  background: rgba(22, 24, 28, 0.96);
+  background: var(--tip-bg);
   backdrop-filter: blur(8px);
   font-size: 12px;
   line-height: 1.5;
@@ -592,8 +749,9 @@ button {
   color: var(--muted);
 }
 .segmented button.on {
-  background: #2a2e35;
+  background: var(--seg-active);
   color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 .segmented button:disabled {
   opacity: 0.35;
@@ -784,7 +942,7 @@ details.card[open] > summary {
   appearance: none;
   -webkit-appearance: none;
   background: var(--surface-2)
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='rgba(255,255,255,.48)' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    var(--select-chevron)
     no-repeat right 14px center;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -814,7 +972,7 @@ details.card[open] > summary {
   right: 0;
   bottom: 0;
   display: flex;
-  background: rgba(10, 10, 12, 0.82);
+  background: var(--tabs-bg);
   backdrop-filter: blur(20px);
   border-top: 1px solid var(--line);
   padding-bottom: env(safe-area-inset-bottom);
@@ -906,7 +1064,7 @@ details.card[open] > summary {
 .sms-body {
   margin-top: 7px;
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--sms-body);
   line-height: 1.5;
 }
 .sms-preview {
@@ -944,10 +1102,10 @@ details.card[open] > summary {
   display: inline-block;
 }
 .chart-legend .swatch.down {
-  background: #3b82f6;
+  background: var(--accent);
 }
 .chart-legend .swatch.up {
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--swatch-up);
 }
 
 /* -- banner --------------------------------------------------------------- */
@@ -958,7 +1116,7 @@ details.card[open] > summary {
   z-index: 5;
   background: rgba(255, 69, 58, 0.14);
   border-bottom: 1px solid rgba(255, 69, 58, 0.3);
-  color: #ffb4af;
+  color: var(--banner-text);
   padding: 10px 16px;
   font-size: 13px;
 }
@@ -983,7 +1141,7 @@ details.card[open] > summary {
 }
 .hero-number:hover {
   color: var(--text);
-  border-color: rgba(255, 255, 255, 0.22);
+  border-color: var(--line-strong);
 }
 .hero-number:active {
   transform: scale(0.96);
@@ -1046,7 +1204,7 @@ details.card[open] > summary {
   padding: 6px 9px;
   border-radius: 9px;
   border: 1px solid var(--line);
-  background: rgba(22, 24, 28, 0.96);
+  background: var(--tip-bg);
   backdrop-filter: blur(8px);
   font-size: 12px;
   white-space: nowrap;
@@ -1266,7 +1424,7 @@ button.pill {
   transition: border-color 0.2s ease;
 }
 button.pill:active {
-  border-color: rgba(255, 255, 255, 0.3);
+  border-color: var(--line-strong);
 }
 
 /* -- responsive layout: tablet & desktop ------------------------------------ */
