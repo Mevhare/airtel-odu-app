@@ -785,8 +785,51 @@ function area(ctx, values, plot, peak, colour, alpha) {
 
 let lastLivePlot = null;   // geometry from the most recent draw, for hover hit-testing
 
+const darkMql = window.matchMedia('(prefers-color-scheme: dark)');
+
+function isDarkTheme() {
+  const meta = document.querySelector('meta[name="color-scheme"]');
+  const mode = meta ? meta.content : 'light dark';
+  if (mode === 'dark') return true;
+  if (mode === 'light') return false;
+  return darkMql.matches;
+}
+
+function chartPalette() {
+  return isDarkTheme()
+    ? {
+        grid: 'rgba(255,255,255,.07)',
+        axis: 'rgba(255,255,255,.32)',
+        upStroke: 'rgba(255,255,255,.35)',
+        upFill: 'rgba(255,255,255,.06)',
+        downStroke: '#3b82f6',
+        downFill: 'rgba(59,130,246,.28)',
+        crosshair: 'rgba(255,255,255,.25)',
+        barLit: '#fff',
+        barBase: '#3b82f6',
+        labelLit: 'rgba(255,255,255,.9)',
+        labelBase: 'rgba(255,255,255,.5)',
+        empty: 'rgba(255,255,255,.3)',
+      }
+    : {
+        grid: 'rgba(17,19,24,.08)',
+        axis: '#687082',
+        upStroke: 'rgba(17,19,24,.42)',
+        upFill: 'rgba(17,19,24,.07)',
+        downStroke: '#2563eb',
+        downFill: 'rgba(37,99,235,.22)',
+        crosshair: 'rgba(17,19,24,.24)',
+        barLit: '#111318',
+        barBase: '#2563eb',
+        labelLit: '#111318',
+        labelBase: '#525866',
+        empty: '#687082',
+      };
+}
+
 function drawLive() {
   const { ctx, width, height } = surface($('chart-live'));
+  const pal = chartPalette();
 
   // A floor of 1 Mbps stops an idle line from being drawn as a mountain range.
   const peak = Math.max(...live.down, ...live.up, 125000);
@@ -806,21 +849,21 @@ function drawLive() {
   ctx.textBaseline = 'middle';
   [1, 0.5, 0].forEach((fraction, i) => {
     const y = plot.y + plot.h * (1 - fraction);
-    ctx.strokeStyle = 'rgba(255,255,255,.07)';
+    ctx.strokeStyle = pal.grid;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(plot.x, y + 0.5);
     ctx.lineTo(plot.x + plot.w, y + 0.5);
     ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,.32)';
+    ctx.fillStyle = pal.axis;
     ctx.textAlign = 'right';
     ctx.fillText(yLabels[i], plot.x - 6, y);
   });
 
-  area(ctx, live.up, plot, peak, 'rgba(255,255,255,.35)', 'rgba(255,255,255,.06)');
-  area(ctx, live.down, plot, peak, '#3b82f6', 'rgba(59,130,246,.28)');
+  area(ctx, live.up, plot, peak, pal.upStroke, pal.upFill);
+  area(ctx, live.down, plot, peak, pal.downStroke, pal.downFill);
 
-  ctx.fillStyle = 'rgba(255,255,255,.32)';
+  ctx.fillStyle = pal.axis;
   ctx.textBaseline = 'alphabetic';
   ctx.textAlign = 'left';
   ctx.fillText('3 min ago', plot.x, height - 3);
@@ -839,15 +882,16 @@ function drawLiveHover(ctx, plot, peak) {
     return;
   }
 
+  const pal = chartPalette();
   const x = liveX(index, plot);
   const y = plot.y + plot.h - (live.down[index] / peak) * plot.h;
 
-  ctx.strokeStyle = 'rgba(255,255,255,.25)';
+  ctx.strokeStyle = pal.crosshair;
   ctx.beginPath();
   ctx.moveTo(x + 0.5, plot.y);
   ctx.lineTo(x + 0.5, plot.y + plot.h);
   ctx.stroke();
-  ctx.fillStyle = '#3b82f6';
+  ctx.fillStyle = pal.downStroke;
   ctx.beginPath();
   ctx.arc(x, y, 3, 0, Math.PI * 2);
   ctx.fill();
@@ -958,12 +1002,13 @@ function rangeLabel(range, since, until) {
 function drawUsage() {
   const canvas = $('chart-usage');
   const { ctx, width, height } = surface(canvas);
+  const pal = chartPalette();
   const points = usage.points;
   const floor = height - 16;
 
   if (!points.length) {
     $('usage-tip').hidden = true;
-    ctx.fillStyle = 'rgba(255,255,255,.3)';
+    ctx.fillStyle = pal.empty;
     ctx.font = '12px system-ui, sans-serif';
     ctx.fillText('No usage texts stored for this period.', 0, height / 2);
     return;
@@ -985,11 +1030,11 @@ function drawUsage() {
     const lit = usage.selected === index || usage.hover === index;
     const barX = index * slot + slot * 0.15;
     const barW = Math.max(slot * 0.7, 1);
-    ctx.fillStyle = lit ? '#fff' : '#3b82f6';
+    ctx.fillStyle = lit ? pal.barLit : pal.barBase;
     ctx.fillRect(barX, floor - barHeight, barW, Math.max(barHeight, 1));
 
     if (showLabels && value > 0) {
-      ctx.fillStyle = lit ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.5)';
+      ctx.fillStyle = lit ? pal.labelLit : pal.labelBase;
       ctx.textAlign = 'center';
       ctx.fillText(bytes(value), barX + barW / 2, Math.max(20, floor - barHeight - 4));
       ctx.textAlign = 'left';
@@ -998,7 +1043,7 @@ function drawUsage() {
 
   positionUsageTip(slot, floor, values, peak);
 
-  ctx.fillStyle = 'rgba(255,255,255,.3)';
+  ctx.fillStyle = pal.axis;
   ctx.font = '10px system-ui, sans-serif';
   ctx.fillText(bytes(peak), 0, 9);
   ctx.fillText(BUCKET[usage.bucket].tick(points[0].ts), 0, height - 3);
@@ -1857,6 +1902,62 @@ $('logout-btn').addEventListener('click', async () => {
   } catch (err) { /* the cookie is being cleared either way -- show the login screen */ }
   showLogin();
 });
+
+// -- theme (System / Light / Dark) ------------------------------------------
+
+function getStoredTheme() {
+  try {
+    const v = localStorage.getItem('color-scheme');
+    return v === 'light' || v === 'dark' ? v : 'system';
+  } catch {
+    return 'system';
+  }
+}
+
+function redrawChartsForTheme() {
+  if (!$('view-home').hidden) drawLive();
+  if (!$('view-usage').hidden) drawUsage();
+}
+
+function syncThemeUI() {
+  const mode = getStoredTheme();
+  const meta = document.querySelector('meta[name="color-scheme"]');
+  if (meta) {
+    meta.content = mode === 'system' ? 'light dark' : mode;
+  }
+  const sysBtn = $('theme-system-btn');
+  if (sysBtn) {
+    sysBtn.textContent = `System (${darkMql.matches ? 'dark' : 'light'})`;
+  }
+  document.querySelectorAll('#theme-picker button').forEach((btn) => {
+    btn.classList.toggle('on', btn.dataset.theme === mode);
+  });
+  redrawChartsForTheme();
+}
+
+document.querySelectorAll('#theme-picker button').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const next = btn.dataset.theme;
+    try {
+      if (next === 'light' || next === 'dark') {
+        localStorage.setItem('color-scheme', next);
+      } else {
+        localStorage.removeItem('color-scheme');
+      }
+    } catch {}
+    syncThemeUI();
+  });
+});
+
+darkMql.addEventListener('change', () => {
+  syncThemeUI();
+});
+
+window.addEventListener('storage', (e) => {
+  if (e.key === 'color-scheme') syncThemeUI();
+});
+
+syncThemeUI();
 
 /* The speeds have their own loop. Both devices answer in tens of milliseconds,
    so a reading a second costs almost nothing and makes the numbers feel live

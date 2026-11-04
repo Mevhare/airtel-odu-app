@@ -3,7 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#000000">
+<meta name="color-scheme" content="light dark">
+<script>
+try {
+  document.querySelector('meta[name="color-scheme"]').content = localStorage.getItem("color-scheme") ?? "light dark";
+} catch {}
+</script>
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f6f8">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000">
 <title>WiFi</title>
 <link rel="stylesheet" href="style.css">
 </head>
@@ -270,6 +277,16 @@
   <!-- ================= SETTINGS ================= -->
   <section class="view" id="view-settings" hidden>
     <header class="page-head"><h1>Settings</h1></header>
+
+    <section class="card" id="appearance-card">
+      <div class="card-head"><h2>Appearance</h2></div>
+      <div class="segmented" id="theme-picker" role="group" aria-label="Theme">
+        <button type="button" data-theme="system" class="on" id="theme-system-btn">System</button>
+        <button type="button" data-theme="light">Light</button>
+        <button type="button" data-theme="dark">Dark</button>
+      </div>
+      <p class="foot">Follow your device's appearance automatically, or pin light or dark mode.</p>
+    </section>
 
     <details class="card" id="phone-card">
       <summary><h2>Add to phone</h2></summary>
