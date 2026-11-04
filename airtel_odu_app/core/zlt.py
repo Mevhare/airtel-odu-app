@@ -159,7 +159,9 @@ class ZltSession:
     def __init__(self, host, username="admin", password="admin", timeout=10):
         self.host = host
         self.username = username
-        self.password = password
+        self._password = password
+        self._rejected_password = None
+        self._locked_until = 0.0
         self.timeout = timeout
         self.session_id = ""
         self._config = None
@@ -169,6 +171,16 @@ class ZltSession:
         # overlapping, and letting two of them log in at once would have the
         # firmware invalidate one session with the other.
         self._lock = threading.RLock()
+
+    @property
+    def password(self):
+        return self._password
+
+    @password.setter
+    def password(self, value):
+        if value != self._password:
+            self._rejected_password = None
+        self._password = value
 
     @property
     def url(self):
@@ -224,6 +236,13 @@ class ZltSession:
         re-login (already inside the lock) is unaffected.
         """
         with self._lock:
+            waiting = self._locked_until - time.time()
+            if waiting > 0:
+                raise ZltError(
+                    "too many failed logins; the device is locked for another "
+                    "%d seconds" % round(waiting)
+                )
+
             self.session_id = ""
             try:
                 self.rpc(CMD_PRELOGIN)          # the stock UI's own warm-up call
@@ -246,10 +265,20 @@ class ZltSession:
 
             if out.get("sessionId"):
                 self.session_id = out["sessionId"]
+                self._rejected_password = None
                 self._config = None
                 return self.session_id
 
             self.session_id = ""
+            if str(out.get("login_fail2")) == "fail":
+                try:
+                    wait = int(out.get("login_time") or 0)
+                    if wait > 0:
+                        self._locked_until = time.time() + wait
+                except (TypeError, ValueError):
+                    pass
+            if str(out.get("message")) != "alreadyLogin":
+                self._rejected_password = self.password
             raise ZltError(_login_failure(out))
 
     def logged_in(self):
@@ -272,6 +301,12 @@ class ZltSession:
 
     def _call(self, cmd, method, params, _retry):
         if not self.session_id:
+            if (self._rejected_password is not None
+                    and self.password == self._rejected_password):
+                raise ZltError(
+                    "device login rejected — sign in on the dashboard with the "
+                    "device password."
+                )
             self.login()
 
         params = dict(params or {})

@@ -14,6 +14,7 @@ Result codes come back as ``[code, payload]``: 0 = ok, 2 = bad argument,
 import base64
 import hashlib
 import json
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -105,7 +106,8 @@ class Odu:
                  scheme=None, on_scheme=None):
         self.host = host
         self.username = username
-        self.password = password
+        self._password = password
+        self._rejected_password = None
         self.timeout = timeout
         self.session = None
         # The name of the hash scheme this firmware accepted. Every wrong guess
@@ -114,6 +116,17 @@ class Odu:
         self.scheme = scheme
         self.on_scheme = on_scheme
         self._locked_until = 0.0
+        self._lock = threading.RLock()
+
+    @property
+    def password(self):
+        return self._password
+
+    @password.setter
+    def password(self, value):
+        if value != self._password:
+            self._rejected_password = None
+        self._password = value
 
     # -- transport ---------------------------------------------------------
 
@@ -171,9 +184,15 @@ class Odu:
         # Once a derivation has worked, trust it exclusively -- cycling through
         # the other six on every login would turn one mistyped password into
         # up to seven real failed attempts, which is plenty to trip the ODU's
-        # own lockout. Only probe blind when the scheme is still unknown.
+        # own lockout. When zwrt_web returns a salt (zte_web_sault), its web UI
+        # uses sha-upper-salt-upper exclusively, so never burn all 5 lockout
+        # attempts cycling through unrelated fallbacks on a single login call.
         known = [pair for pair in named if pair[0] == self.scheme]
-        return known or named
+        if known:
+            return known
+        if salt:
+            return [named[0]]
+        return named
 
     def login(self):
         """Authenticate and store the ubus session id.
@@ -182,91 +201,127 @@ class Odu:
         only taken when the device actually serves a certificate. Units that
         return an empty ``crt`` -- including this one -- use the salt alone.
         """
-        # Once locked out there is nothing to do but wait, and knocking on the
-        # door every second only adds noise, so the deadline is held locally.
-        waiting = self._locked_until - time.time()
-        if waiting > 0:
-            raise OduError(
-                "ODU is rate-limiting logins for another %d seconds" % round(waiting))
+        with self._lock:
+            # Once locked out there is nothing to do but wait, and knocking on the
+            # door every second only adds noise, so the deadline is held locally.
+            waiting = self._locked_until - time.time()
+            if waiting > 0:
+                raise OduError(
+                    "ODU is rate-limiting logins for another %d seconds" % round(waiting))
 
-        info = self._anon_call("zwrt_web", "web_login_info")
-        salt = info.get("zte_web_sault", "") or ""
+            info = self._anon_call("zwrt_web", "web_login_info")
+            salt = info.get("zte_web_sault", "") or ""
 
-        locked = info.get("login_fail_lock_lefttime")
-        if locked:
-            try:
-                if int(locked) > 0:
-                    self._locked_until = time.time() + int(locked)
+            locked = info.get("login_fail_lock_lefttime")
+            if locked:
+                try:
+                    if int(locked) > 0:
+                        self._locked_until = time.time() + int(locked)
+                        raise OduError(
+                            "ODU is rate-limiting logins for another %s seconds" % locked
+                        )
+                except (TypeError, ValueError):
+                    pass
+
+            for name, candidate in self._password_candidates(salt):
+                out = self._anon_call("zwrt_web", "web_login", {
+                    "username": self.username,
+                    "password": candidate,
+                })
+                session = out.get("ubus_rpc_session")
+                if session:
+                    self.session = session
+                    self._rejected_password = None
+                    if name != self.scheme:
+                        self.scheme = name
+                        if self.on_scheme:
+                            self.on_scheme(name)
+                    return session
+                if str(out.get("result")) == "3":
                     raise OduError(
-                        "ODU is rate-limiting logins for another %s seconds" % locked
+                        "Someone else is already signed in to the outdoor unit at %s "
+                        "— log out of its own web page first, or wait for that session "
+                        "to expire." % self.host
+                    )
+
+            if not salt:
+                # Some builds expose the stock OpenWRT login instead of ZTE's wrapper.
+                out = self._anon_call("session", "login", {
+                    "username": self.username,
+                    "password": self.password,
+                    "timeout": 3600,
+                })
+                session = out.get("ubus_rpc_session")
+                if session:
+                    self.session = session
+                    self._rejected_password = None
+                    return session
+
+            self._rejected_password = self.password
+            after = self._anon_call("zwrt_web", "web_login_info")
+            after_locked = after.get("login_fail_lock_lefttime")
+            try:
+                if after_locked and int(after_locked) > 0:
+                    self._locked_until = time.time() + int(after_locked)
+                    raise OduError(
+                        "Too many failed logins; ODU is rate-limiting logins for "
+                        "another %s seconds." % after_locked
                     )
             except (TypeError, ValueError):
                 pass
-
-        for name, candidate in self._password_candidates(salt):
-            out = self._anon_call("zwrt_web", "web_login", {
-                "username": self.username,
-                "password": candidate,
-            })
-            session = out.get("ubus_rpc_session")
-            if session:
-                self.session = session
-                if name != self.scheme:
-                    self.scheme = name
-                    if self.on_scheme:
-                        self.on_scheme(name)
-                return session
-
-        # Some builds expose the stock OpenWRT login instead of ZTE's wrapper.
-        out = self._anon_call("session", "login", {
-            "username": self.username,
-            "password": self.password,
-            "timeout": 3600,
-        })
-        session = out.get("ubus_rpc_session")
-        if session:
-            self.session = session
-            return session
-
-        raise OduError(
-            "ODU login rejected. Check the password in config.json; the device "
-            "also locks out briefly after repeated failures."
-        )
+            remaining = after.get("login_fail_num")
+            if remaining is not None and str(remaining) != "":
+                raise OduError(
+                    "ODU login rejected — check the outdoor unit password "
+                    "(%s attempt%s left before lockout)."
+                    % (remaining, "" if str(remaining) == "1" else "s")
+                )
+            raise OduError(
+                "ODU login rejected. Check the password in config.json; the device "
+                "also locks out briefly after repeated failures."
+            )
 
     def call(self, namespace, method, args=None, _retry=True):
         """Invoke a ubus method, logging in (or back in) as needed."""
-        if self.session is None:
-            self.login()
-        payload = [{
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "call",
-            "params": [self.session, namespace, method, args or {}],
-        }]
-        out = self._rpc(payload)
-        entry = out[0]
+        with self._lock:
+            if self.session is None:
+                if (self._rejected_password is not None
+                        and self.password == self._rejected_password):
+                    raise OduError(
+                        "ODU login rejected — sign in on the dashboard with the "
+                        "outdoor unit password."
+                    )
+                self.login()
+            payload = [{
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "call",
+                "params": [self.session, namespace, method, args or {}],
+            }]
+            out = self._rpc(payload)
+            entry = out[0]
 
-        # An expired session shows up as a JSON-RPC error, not a result code.
-        # Anything else that comes back as an "error" (permission denial, a
-        # malformed call) is not fixed by a fresh session, so surface it
-        # rather than retrying and masking it behind a generic failure.
-        if "error" in entry:
-            if _retry:
+            # An expired session shows up as a JSON-RPC error, not a result code.
+            # Anything else that comes back as an "error" (permission denial, a
+            # malformed call) is not fixed by a fresh session, so surface it
+            # rather than retrying and masking it behind a generic failure.
+            if "error" in entry:
+                if _retry:
+                    self.session = None
+                    return self.call(namespace, method, args, _retry=False)
+                message = entry["error"].get("message") or "unknown error"
+                raise OduError("%s.%s: %s" % (namespace, method, message))
+
+            result = entry.get("result")
+            if not result:
+                raise OduError("%s.%s returned no result" % (namespace, method))
+            if result[0] == OK:
+                return result[1] if len(result) > 1 else {}
+            if result[0] == BAD_ARGUMENT and _retry:
+                # Some methods reject a stale session with code 2 rather than an error.
                 self.session = None
                 return self.call(namespace, method, args, _retry=False)
-            message = entry["error"].get("message") or "unknown error"
-            raise OduError("%s.%s: %s" % (namespace, method, message))
-
-        result = entry.get("result")
-        if not result:
-            raise OduError("%s.%s returned no result" % (namespace, method))
-        if result[0] == OK:
-            return result[1] if len(result) > 1 else {}
-        if result[0] == BAD_ARGUMENT and _retry:
-            # Some methods reject a stale session with code 2 rather than an error.
-            self.session = None
-            return self.call(namespace, method, args, _retry=False)
-        raise OduError("%s.%s failed with code %d" % (namespace, method, result[0]))
+            raise OduError("%s.%s failed with code %d" % (namespace, method, result[0]))
 
     # -- telemetry ---------------------------------------------------------
 

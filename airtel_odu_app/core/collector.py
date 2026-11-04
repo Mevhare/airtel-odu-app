@@ -78,11 +78,26 @@ class Collector:
     def stop(self):
         self._stop.set()
 
+    def _has_credentials(self):
+        """Wait to poll hardware until the user has signed in on the dashboard.
+
+        A fresh config.json is seeded from config.example.json with placeholder
+        'admin' passwords; polling with those before the user has entered their
+        real credentials would immediately trip the device's failed-login lockout.
+        """
+        return bool((self.config.get("auth") or {}).get("session_token"))
+
+    def poll_now(self):
+        """Kick off an immediate reading right after sign-in."""
+        threading.Thread(target=self._poll_once, daemon=True).start()
+        threading.Thread(target=self._poll_live, daemon=True).start()
+
     def _loop(self):
         while not self._stop.is_set():
             started = time.time()
             try:
-                self._poll_once()
+                if self._has_credentials():
+                    self._poll_once()
             except Exception:
                 # A single bad poll must never kill the thread.
                 traceback.print_exc()
@@ -93,7 +108,8 @@ class Collector:
         while not self._stop.is_set():
             started = time.time()
             try:
-                self._poll_live()
+                if self._has_credentials():
+                    self._poll_live()
             except Exception:
                 traceback.print_exc()
             elapsed = time.time() - started

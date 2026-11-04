@@ -1992,10 +1992,12 @@ function applyLoginShape() {
   $('login-same-row').hidden = single;
   $('login-router-row').hidden = single || $('login-same').checked;
   $('login-odu-password').placeholder = single
-    ? 'Device password' : 'Outdoor unit password';
+    ? 'Device password' : 'Outdoor unit password (192.168.254.1)';
   $('login-sub').textContent = single
     ? 'The admin password you use on the device\u2019s own web page.'
-    : 'Use the same admin passwords as the outdoor unit and router.';
+    : $('login-same').checked
+      ? 'Use the same admin passwords as the outdoor unit and router.'
+      : 'Enter the admin passwords for the outdoor unit and router separately.';
 }
 
 $('login-same').addEventListener('change', (e) => {
